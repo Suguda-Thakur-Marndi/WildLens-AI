@@ -1,11 +1,22 @@
 import { IdentificationResult, ModelTelemetry, FieldMission } from '@/src/types';
 import { FIELD_MISSIONS, PRESET_TEST_SPECIMENS } from './sampleData';
 
-const BASE_URL = ''; // Relative path for proxy rewrites via Next.js
+function getApiUrl(subpath: string): string {
+  const cleanPath = subpath.startsWith('/') ? subpath.slice(1) : subpath;
+  // If running on the server (runtime function / SSR), resolve using the injected BACKEND_URL service binding
+  if (typeof window === 'undefined' && process.env.BACKEND_URL) {
+    const base = process.env.BACKEND_URL.endsWith('/')
+      ? process.env.BACKEND_URL
+      : `${process.env.BACKEND_URL}/`;
+    return new URL(cleanPath, base).toString();
+  }
+  // When running in the browser, route via the relative path
+  return `/${cleanPath}`;
+}
 
 export async function fetchModelStatus(): Promise<ModelTelemetry> {
   try {
-    const res = await fetch(`${BASE_URL}/api/model/status`, {
+    const res = await fetch(getApiUrl('api/model/status'), {
       method: 'GET',
       headers: { Accept: 'application/json' },
       cache: 'no-store'
@@ -67,7 +78,7 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
     const formData = new FormData();
     formData.append('file', file);
 
-    const res = await fetch(`${BASE_URL}/api/identify`, {
+    const res = await fetch(getApiUrl('api/identify'), {
       method: 'POST',
       body: formData,
     });
@@ -226,16 +237,19 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
     }
 
     // Never fabricate a prediction for unknown images when the API is down
+    const targetUrl = typeof window === 'undefined' && process.env.BACKEND_URL
+      ? process.env.BACKEND_URL
+      : 'http://127.0.0.1:8000';
     throw new Error(
       `Local BioCLIP inference server unreachable (${err.message || 'connection failed'}). ` +
-      `Ensure the FastAPI backend is running on http://127.0.0.1:8000.`
+      `Ensure the FastAPI backend is running on ${targetUrl}.`
     );
   }
 }
 
 export async function fetchMissions(): Promise<FieldMission[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/missions`, {
+    const res = await fetch(getApiUrl('api/missions'), {
       headers: { Accept: 'application/json' },
       cache: 'no-store'
     });

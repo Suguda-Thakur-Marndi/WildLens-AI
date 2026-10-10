@@ -45,12 +45,16 @@ class Settings(BaseModel):
         default_factory=lambda: float(os.getenv("OUT_OF_DISTRIBUTION_THRESHOLD", "0.60"))
     )
 
-    cors_origins: List[str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ]
+    cors_origins: List[str] = Field(
+        default_factory=lambda: [
+            origin.strip()
+            for origin in os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
+            ).split(",")
+            if origin.strip()
+        ]
+    )
 
 settings = Settings()
 

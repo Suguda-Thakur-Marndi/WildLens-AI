@@ -41,6 +41,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 @app.get("/")
+@app.get("/api")
 def root():
     return {
         "app": settings.app_name,
