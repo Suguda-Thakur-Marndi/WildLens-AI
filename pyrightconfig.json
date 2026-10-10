@@ -1,0 +1,23 @@
+{
+  "include": [
+    "backend",
+    "scripts",
+    "scratch"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv"
+  ],
+  "extraPaths": [
+    "backend"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "reportOptionalCall": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalSubscript": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportCallIssue": "none"
+}
