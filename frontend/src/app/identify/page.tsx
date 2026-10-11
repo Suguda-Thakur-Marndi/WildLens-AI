@@ -86,7 +86,7 @@ export default function IdentifyPage() {
       }
       setResult(identificationResult);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Identification failed. Please try another angle or photo.');
+      setErrorMsg(err.userMessage || err.message || 'Identification failed. Please try another angle or photo.');
     } finally {
       setLoading(false);
     }
@@ -123,13 +123,23 @@ export default function IdentifyPage() {
 
             {/* Error Banner State */}
             {errorMsg && (
-              <div className="w-full max-w-xl mb-6 p-4 rounded-xl bg-error-container text-on-error-container flex items-start gap-3 border border-red-200 shadow-sm animate-fadeIn">
-                <span className="material-symbols-outlined text-[20px] text-error flex-shrink-0 mt-0.5">
-                  warning
-                </span>
-                <div className="flex flex-col text-sm">
-                  <span className="font-semibold text-error">Validation Notice</span>
-                  <span className="text-xs text-[#93000a] mt-0.5">{errorMsg}</span>
+              <div className="w-full max-w-xl mb-6 p-4 rounded-xl bg-error-container text-on-error-container flex flex-col gap-2 border border-red-200 shadow-sm animate-fadeIn">
+                <div className="flex items-start gap-3">
+                  <span className="material-symbols-outlined text-[20px] text-error flex-shrink-0 mt-0.5">
+                    warning
+                  </span>
+                  <div className="flex flex-col text-sm flex-1">
+                    <span className="font-semibold text-error">Notice</span>
+                    <span className="text-xs text-[#93000a] mt-0.5 leading-relaxed">{errorMsg}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-1 border-t border-red-200/50 justify-end">
+                  <a
+                    href="./../settings"
+                    className="text-xs font-semibold text-primary underline hover:text-primary-container"
+                  >
+                    Configure Backend in Settings →
+                  </a>
                 </div>
               </div>
             )}

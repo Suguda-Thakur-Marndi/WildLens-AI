@@ -66,6 +66,9 @@ jobs:
       - name: Run Vitest Unit Tests
         run: npm run test
 
+      # NEXT_PUBLIC_API_URL: Configured via GitHub Repo Settings > Secrets and variables > Actions > Variables.
+      # Must point to your deployed FastAPI backend (e.g. https://your-backend.onrender.com).
+      # If unset or empty, the frontend runs offline-safe and prompts for backend configuration in Settings.
       - name: Build Next.js static export
         env:
           BASE_PATH: /WildLens-AI

@@ -68,3 +68,29 @@ def test_empty_image_rejected():
     files = {"file": ("empty.jpg", b"", "image/jpeg")}
     response = client.post("/api/identify", files=files)
     assert response.status_code == 400
+
+def test_identify_get_endpoint_returns_instruction():
+    response = client.get("/api/identify")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["method"] == "POST"
+    assert data["content_type"] == "multipart/form-data"
+
+def test_trailing_slashes_supported():
+    res_health = client.get("/api/health/")
+    assert res_health.status_code == 200
+    res_model = client.get("/api/model/status/")
+    assert res_model.status_code == 200
+    res_missions = client.get("/api/missions/")
+    assert res_missions.status_code == 200
+
+def test_cors_preflight_options_for_github_pages():
+    headers = {
+        "Origin": "https://suguda-thakur-marndi.github.io",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+    }
+    response = client.options("/api/identify", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://suguda-thakur-marndi.github.io"
+

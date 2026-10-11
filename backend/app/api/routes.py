@@ -95,6 +95,7 @@ OUTDOOR_MISSIONS: List[Dict[str, Any]] = [
 ]
 
 @router.get("/health", response_model=HealthResponse)
+@router.get("/health/", response_model=HealthResponse)
 def get_health() -> HealthResponse:
     service = BioClipService.get_instance()
     mem_free = None
@@ -112,12 +113,15 @@ def get_health() -> HealthResponse:
     )
 
 @router.get("/model/status", response_model=ModelStatusResponse)
+@router.get("/model/status/", response_model=ModelStatusResponse)
 @router.get("/system/status", response_model=ModelStatusResponse)
+@router.get("/system/status/", response_model=ModelStatusResponse)
 def get_model_status() -> ModelStatusResponse:
     service = BioClipService.get_instance()
     return service.get_status()
 
 @router.post("/model/load")
+@router.post("/model/load/")
 def load_model_explicit() -> Dict[str, Any]:
     service = BioClipService.get_instance()
     success = service.load_model()
@@ -132,7 +136,20 @@ def load_model_explicit() -> Dict[str, Any]:
         "model_status": service.get_status()
     }
 
+@router.get("/identify")
+@router.get("/identify/")
+def get_identify_info() -> Dict[str, Any]:
+    return {
+        "endpoint": "/api/identify",
+        "method": "POST",
+        "content_type": "multipart/form-data",
+        "description": "Upload a nature specimen image using POST multipart/form-data with field name 'file' to perform BioCLIP-2 taxonomic identification.",
+        "allowed_mime_types": settings.allowed_mime_types,
+        "max_upload_size_bytes": settings.max_upload_size_bytes
+    }
+
 @router.post("/identify", response_model=IdentificationResponse)
+@router.post("/identify/", response_model=IdentificationResponse)
 async def identify_nature_image(file: UploadFile = File(...)) -> IdentificationResponse:
     if file.content_type and file.content_type.lower() not in settings.allowed_mime_types:
         raise ImageValidationError(
@@ -148,9 +165,11 @@ async def identify_nature_image(file: UploadFile = File(...)) -> IdentificationR
     return service.identify_image(image_bytes)
 
 @router.get("/missions", response_model=List[OutdoorMissionSchema])
+@router.get("/missions/", response_model=List[OutdoorMissionSchema])
 def get_missions() -> List[Dict[str, Any]]:
     return OUTDOOR_MISSIONS
 
 @router.get("/species")
+@router.get("/species/")
 def get_species_reference() -> List[Dict[str, Any]]:
     return default_taxonomy_repository.list_all()

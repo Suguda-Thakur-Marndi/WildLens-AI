@@ -3,7 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Header from '@/src/components/Header';
 import BottomNav from '@/src/components/BottomNav';
-import { fetchModelStatus } from '@/src/lib/api';
+import {
+  fetchModelStatus,
+  getApiBaseUrl,
+  getStoredApiUrl,
+  setStoredApiUrl,
+  testBackendConnection
+} from '@/src/lib/api';
 import { journalDb } from '@/src/lib/journalDb';
 import { ModelTelemetry } from '@/src/types';
 import SystemStatusModal from '@/src/components/system/SystemStatusModal';
@@ -16,8 +22,14 @@ export default function SettingsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [_loading, setLoading] = useState(true);
 
+  // Backend API URL configuration state
+  const [backendUrlInput, setBackendUrlInput] = useState('');
+  const [testingBackend, setTestingBackend] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
   const loadSettingsData = async () => {
     setLoading(true);
+    setBackendUrlInput(getStoredApiUrl() || getApiBaseUrl() || '');
     try {
       const [statusData, obs] = await Promise.all([
         fetchModelStatus(),
@@ -35,6 +47,44 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettingsData();
   }, []);
+
+  const handleTestBackend = async () => {
+    if (!backendUrlInput.trim()) {
+      setTestResult({ ok: false, message: 'Please enter a backend URL to test.' });
+      return;
+    }
+    setTestingBackend(true);
+    setTestResult(null);
+    const result = await testBackendConnection(backendUrlInput.trim());
+    setTestingBackend(false);
+    if (result.ok) {
+      setTestResult({
+        ok: true,
+        message: `Connected! Server healthy (latency: ${result.latencyMs}ms, version: ${result.data?.version || '1.0.0'}).`,
+      });
+      showToast('FastAPI backend connection verified!');
+    } else {
+      setTestResult({
+        ok: false,
+        message: `Failed to connect (${result.error || 'Network error'}). Ensure backend is running and CORS is configured.`,
+      });
+    }
+  };
+
+  const handleSaveBackendUrl = () => {
+    const trimmed = backendUrlInput.trim();
+    setStoredApiUrl(trimmed || null);
+    showToast(trimmed ? 'Custom backend API URL saved.' : 'Backend URL reset to default.');
+    loadSettingsData();
+  };
+
+  const handleResetBackendUrl = () => {
+    setStoredApiUrl(null);
+    setBackendUrlInput(getApiBaseUrl() || '');
+    setTestResult(null);
+    showToast('Reset to default API configuration.');
+    loadSettingsData();
+  };
 
   const handleExportJournal = async () => {
     const jsonStr = await journalDb.exportJson();
@@ -180,6 +230,121 @@ export default function SettingsPage() {
                 <span className="material-symbols-outlined text-[15px]">developer_board</span>
                 <span>Inspect AI Telemetry</span>
               </button>
+            </div>
+          </section>
+
+          {/* FastAPI Backend Server & API Endpoint Configuration */}
+          <section className="bg-surface-container-lowest rounded-xl p-6 plate-border shadow-sm flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#e5e0d3] pb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-[24px] text-primary">
+                  dns
+                </span>
+                <span className="font-headline-sm text-lg font-serif text-primary font-semibold">
+                  FastAPI Backend Server & Cloud Host
+                </span>
+              </div>
+              <span className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold ${
+                telemetry?.status === 'ready'
+                  ? 'bg-[#2e6b47] text-white'
+                  : 'bg-zinc-200 text-zinc-700'
+              }`}>
+                {telemetry?.status === 'ready' ? 'API Connected' : 'Disconnected'}
+              </span>
+            </div>
+
+            <div className="text-xs text-on-surface-variant leading-relaxed">
+              <p>
+                <strong>Architecture Notice:</strong> WildLens AI is deployed as a static web app on GitHub Pages. Because GitHub Pages does not run Python or PyTorch, live BioCLIP-2 vision AI identification runs in an external FastAPI server.
+              </p>
+              <p className="mt-1">
+                You can host the FastAPI server on <strong>Render</strong>, <strong>Railway</strong>, <strong>Hugging Face Spaces</strong>, or run it on your local network/machine.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-surface-container-low border border-[#e5e0d3] flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-primary flex items-center justify-between">
+                  <span>FastAPI Service Base URL</span>
+                  <span className="text-[10px] text-secondary font-mono">
+                    {getStoredApiUrl()
+                      ? 'Custom Override (Stored in Browser)'
+                      : process.env.NEXT_PUBLIC_API_URL
+                      ? 'Built from NEXT_PUBLIC_API_URL'
+                      : 'Default Fallback'}
+                  </span>
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="url"
+                    placeholder="https://wildlens-ai-backend.onrender.com"
+                    value={backendUrlInput}
+                    onChange={(e) => setBackendUrlInput(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg bg-surface border border-[#e5e0d3] text-xs font-mono text-primary placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTestBackend}
+                    disabled={testingBackend}
+                    className="px-3.5 py-2 rounded-lg bg-secondary text-on-secondary text-xs font-semibold hover:bg-secondary-container transition-colors shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${testingBackend ? 'animate-spin' : ''}`}>
+                      network_check
+                    </span>
+                    <span>{testingBackend ? 'Testing...' : 'Test Connection'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {testResult && (
+                <div
+                  className={`p-2.5 rounded-lg text-xs font-medium border flex items-start gap-2 ${
+                    testResult.ok
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px] flex-shrink-0 mt-0.5">
+                    {testResult.ok ? 'check_circle' : 'error'}
+                  </span>
+                  <span className="leading-snug">{testResult.message}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#e5e0d3]">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetBackendUrl}
+                    className="px-2.5 py-1 text-xs text-error hover:bg-red-50 rounded-md transition-colors font-medium"
+                  >
+                    Reset to Default
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBackendUrlInput('http://127.0.0.1:8000');
+                    }}
+                    className="px-2 py-1 text-[11px] text-secondary hover:bg-surface rounded-md transition-colors font-mono"
+                  >
+                    Set Localhost (127.0.0.1:8000)
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveBackendUrl}
+                  className="px-4 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:bg-primary-container transition-colors shadow-sm"
+                >
+                  Save API Configuration
+                </button>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-on-surface-variant/80 space-y-1 bg-surface-container-low/50 p-3 rounded-lg border border-[#e5e0d3]/60">
+              <span className="font-semibold text-primary block">Deployment Quick Guide:</span>
+              <p>• <strong>Render / Railway:</strong> Deploy <code>backend/Dockerfile</code> or <code>uvicorn app.main:app</code>.</p>
+              <p>• <strong>CORS Setup:</strong> Set <code>CORS_ORIGINS=https://suguda-thakur-marndi.github.io</code> in backend environment variables.</p>
+              <p>• <strong>GitHub Actions:</strong> In repo Settings &gt; Secrets and variables &gt; Actions &gt; Variables, set <code>NEXT_PUBLIC_API_URL</code> so every build automatically points to your production backend.</p>
             </div>
           </section>
 

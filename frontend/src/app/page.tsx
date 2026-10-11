@@ -2,11 +2,29 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { identifyImageFile, fetchModelStatus } from '@/src/lib/api';
+import {
+  identifyImageFile,
+  fetchModelStatus,
+  WildLensApiError,
+  getApiBaseUrl,
+  setStoredApiUrl,
+  getStoredApiUrl,
+  testBackendConnection
+} from '@/src/lib/api';
 import { IdentificationResult, ModelTelemetry } from '@/src/types';
 import { PRESET_TEST_SPECIMENS } from '@/src/lib/sampleData';
 
 type FieldModeStep = 'camera' | 'analyzing' | 'glance' | 'lookup';
+
+interface IdentificationErrorState {
+  title: string;
+  message: string;
+  type: string;
+  canRetry: boolean;
+  technicalDetails?: string;
+  file?: File;
+  previewUrl?: string;
+}
 
 const SENSORY_PROMPTS = [
   'Look up at the canopy or horizon. Take three deep breaths and feel the wind on your face.',
@@ -21,6 +39,8 @@ export default function FieldModeLandingPage() {
   const [cameraActive, setCameraActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [identificationError, setIdentificationError] = useState<IdentificationErrorState | null>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(60);
@@ -157,6 +177,7 @@ export default function FieldModeLandingPage() {
   // Process identification with BioCLIP-2
   const processIdentification = async (file: File, previewUrl: string) => {
     setStep('analyzing');
+    setIdentificationError(null);
     try {
       const res = await identifyImageFile(file);
       if (!res.image_url || res.image_url.startsWith('blob:')) {
@@ -165,7 +186,37 @@ export default function FieldModeLandingPage() {
       setResult(res);
       setStep('glance');
     } catch (err: any) {
-      alert(err.message || 'Identification failed. Please try another shot.');
+      console.warn('Identification error:', err);
+      const isApiErr = err instanceof WildLensApiError;
+      const errorType = isApiErr ? err.errorType : 'network_error';
+
+      let title = 'Identification Failed';
+      if (errorType === 'static_host_405') {
+        title = 'Method Not Allowed (HTTP 405)';
+      } else if (errorType === 'unconfigured_backend') {
+        title = 'FastAPI Backend Required';
+      } else if (errorType === 'cold_start_or_server_error') {
+        title = 'Backend Starting Up';
+      } else if (errorType === 'not_found_404') {
+        title = 'API Endpoint Not Found';
+      } else if (errorType === 'validation_error') {
+        title = 'Image Validation Notice';
+      } else if (errorType === 'network_error') {
+        title = 'Connection Unreachable';
+      }
+
+      setIdentificationError({
+        title,
+        message:
+          err.userMessage ||
+          err.message ||
+          'Identification failed. Please verify that the backend is connected and try again.',
+        type: errorType,
+        canRetry: err.canRetry ?? true,
+        technicalDetails: err.technicalDetails,
+        file,
+        previewUrl,
+      });
       setStep('camera');
     }
   };
@@ -585,6 +636,91 @@ export default function FieldModeLandingPage() {
 
       {/* Center Viewfinder / Fallback View */}
       <main className="flex-1 relative flex items-center justify-center overflow-hidden">
+        {/* Inline Error Card with Retry & Diagnostics */}
+        {identificationError && (
+          <div className="absolute top-4 left-4 right-4 z-30 max-w-md mx-auto bg-[#1a0e0e]/95 backdrop-blur-md border-2 border-[#b91c1c] text-[#fecaca] p-4 rounded-2xl shadow-2xl flex flex-col gap-3 animate-fadeIn">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-2xl text-[#ef4444] flex-shrink-0 mt-0.5">
+                {identificationError.type === 'static_host_405'
+                  ? 'cloud_off'
+                  : identificationError.type === 'cold_start_or_server_error'
+                  ? 'hourglass_top'
+                  : identificationError.type === 'unconfigured_backend'
+                  ? 'dns'
+                  : 'warning'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-serif font-bold text-sm sm:text-base text-[#fee2e2] leading-snug">
+                  {identificationError.title}
+                </h4>
+                <p className="text-xs text-[#fca5a5] mt-1 leading-relaxed">
+                  {identificationError.message}
+                </p>
+              </div>
+              <button
+                onClick={() => setIdentificationError(null)}
+                aria-label="Dismiss error"
+                className="w-7 h-7 rounded-lg text-[#fca5a5] hover:text-white hover:bg-white/10 flex items-center justify-center flex-shrink-0"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#4a1c1c]">
+              {identificationError.canRetry && identificationError.file && (
+                <button
+                  onClick={() => {
+                    const f = identificationError.file!;
+                    const p = identificationError.previewUrl!;
+                    setIdentificationError(null);
+                    processIdentification(f, p);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[16px]">refresh</span>
+                  <span>Retry Identification</span>
+                </button>
+              )}
+
+              {(identificationError.type === 'unconfigured_backend' ||
+                identificationError.type === 'static_host_405' ||
+                identificationError.type === 'network_error') && (
+                <>
+                  <button
+                    onClick={() => setShowConfigModal(true)}
+                    className="px-3 py-1.5 rounded-xl bg-[#2e6b47] hover:bg-[#398257] text-[#f4fff4] text-xs font-bold flex items-center gap-1.5 transition-colors border border-[#439665]"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">tune</span>
+                    <span>Configure Backend URL</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIdentificationError(null);
+                      handleSampleSelect(PRESET_TEST_SPECIMENS[0]);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-[#122316] text-[#8fc0a9] hover:bg-[#1b3821] text-xs font-bold border border-[#234b2a]"
+                  >
+                    <span>Try Sample Specimen</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Collapsible Technical Details */}
+            {identificationError.technicalDetails && (
+              <details className="text-[11px] text-[#f87171] bg-black/30 rounded-lg p-2 border border-red-900/50">
+                <summary className="cursor-pointer font-mono font-semibold select-none">
+                  Technical Details
+                </summary>
+                <p className="mt-1 font-mono text-[10px] break-all">
+                  {identificationError.technicalDetails}
+                </p>
+              </details>
+            )}
+          </div>
+        )}
+
         {/* Live Video Camera Stream */}
         <video
           ref={videoRef}
@@ -700,6 +836,170 @@ export default function FieldModeLandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Backend API Configuration Modal */}
+      <ApiConfigModal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        onSaved={() => {
+          fetchModelStatus().then(setTelemetry).catch(() => {});
+        }}
+      />
+    </div>
+  );
+}
+
+function ApiConfigModal({
+  isOpen,
+  onClose,
+  onSaved,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [customUrl, setCustomUrl] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCustomUrl(getStoredApiUrl() || getApiBaseUrl() || '');
+      setTestResult(null);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleTest = async () => {
+    if (!customUrl.trim()) {
+      setTestResult({ ok: false, message: 'Please enter a URL to test.' });
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    const res = await testBackendConnection(customUrl.trim());
+    setTesting(false);
+    if (res.ok) {
+      setTestResult({
+        ok: true,
+        message: `Connected successfully! Response time: ${res.latencyMs}ms. Status: ${res.data?.status || 'healthy'}.`,
+      });
+    } else {
+      setTestResult({
+        ok: false,
+        message: `Connection failed (${res.error || 'Network error'}). Ensure backend is running and allows CORS.`,
+      });
+    }
+  };
+
+  const handleSave = () => {
+    setStoredApiUrl(customUrl.trim() || null);
+    onSaved();
+    onClose();
+  };
+
+  const handleClear = () => {
+    setStoredApiUrl(null);
+    setCustomUrl('');
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md bg-[#0c180e] border border-[#234b2a] text-[#f4fff4] rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#1b3821]">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#8fc0a9]">tune</span>
+            <h3 className="font-serif font-bold text-base text-[#d4ead6]">
+              FastAPI Backend Server URL
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close configuration"
+            className="w-7 h-7 rounded-lg text-[#8fc0a9] hover:bg-[#122316] flex items-center justify-center"
+          >
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        </div>
+
+        <p className="text-xs text-[#a0c2a8] leading-relaxed">
+          WildLens AI is hosted on GitHub Pages (static hosting). Live BioCLIP-2 vision AI inference runs on an external FastAPI server. Enter your deployed backend URL below.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#8fc0a9]">
+            Backend Base URL
+          </label>
+          <input
+            type="url"
+            placeholder="https://your-fastapi-backend.onrender.com"
+            value={customUrl}
+            onChange={(e) => setCustomUrl(e.target.value)}
+            className="w-full px-3 py-2 rounded-xl bg-[#122316] border border-[#234b2a] text-[#f4fff4] placeholder:text-[#526a56] text-xs font-mono focus:outline-none focus:border-[#8fc0a9]"
+          />
+          <span className="text-[10px] text-[#526a56] block">
+            Example: https://wildlens-ai.onrender.com or http://192.168.1.100:8000
+          </span>
+        </div>
+
+        {testResult && (
+          <div
+            className={`p-2.5 rounded-xl text-xs font-medium border flex items-start gap-2 ${
+              testResult.ok
+                ? 'bg-[#1b4332]/50 border-[#2e6b47] text-[#a7f3d0]'
+                : 'bg-[#450a0a]/50 border-[#991b1b] text-[#fca5a5]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base flex-shrink-0 mt-0.5">
+              {testResult.ok ? 'check_circle' : 'error'}
+            </span>
+            <span className="leading-snug">{testResult.message}</span>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#1b3821]">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTest}
+              disabled={testing}
+              className="px-3 py-1.5 rounded-lg bg-[#122316] hover:bg-[#1b3821] text-[#8fc0a9] text-xs font-bold border border-[#234b2a] transition-colors disabled:opacity-50"
+            >
+              {testing ? 'Pinging...' : 'Test Connection'}
+            </button>
+            <button
+              onClick={handleClear}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-[#f87171] hover:bg-red-950/30 transition-colors"
+            >
+              Reset
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg bg-[#122316] text-xs font-medium text-[#a0c2a8]"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-1.5 rounded-lg bg-[#2e6b47] hover:bg-[#398257] text-[#f4fff4] text-xs font-bold shadow-md transition-colors"
+            >
+              Save URL
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
