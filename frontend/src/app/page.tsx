@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { identifyImageFile } from '@/src/lib/api';
-import { IdentificationResult } from '@/src/types';
+import { identifyImageFile, fetchModelStatus } from '@/src/lib/api';
+import { IdentificationResult, ModelTelemetry } from '@/src/types';
 import { PRESET_TEST_SPECIMENS } from '@/src/lib/sampleData';
 
 type FieldModeStep = 'camera' | 'analyzing' | 'glance' | 'lookup';
@@ -25,6 +25,11 @@ export default function FieldModeLandingPage() {
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(60);
   const [sensoryPrompt, setSensoryPrompt] = useState(SENSORY_PROMPTS[0]);
+  const [telemetry, setTelemetry] = useState<ModelTelemetry | null>(null);
+
+  useEffect(() => {
+    fetchModelStatus().then(setTelemetry).catch(() => {});
+  }, []);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -336,6 +341,8 @@ export default function FieldModeLandingPage() {
               <img
                 src={capturedImage}
                 alt="Captured specimen"
+                loading="lazy"
+                decoding="async"
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border-2 border-[#8fc0a9] flex-shrink-0"
               />
             )}
@@ -455,14 +462,34 @@ export default function FieldModeLandingPage() {
             <span className="material-symbols-outlined text-2xl">menu</span>
           </button>
 
-          {/* Field Mode Indicator */}
+          {/* Field Mode & AI Readiness Indicator */}
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#8fc0a9] animate-pulse" />
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                telemetry?.status === 'ready'
+                  ? 'bg-[#8fc0a9]'
+                  : telemetry?.status === 'loading'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-zinc-500'
+              }`}
+            />
             <span className="font-serif font-bold text-sm sm:text-base text-[#f4fff4] tracking-wide">
               WildLens AI
             </span>
-            <span className="text-[10px] font-mono uppercase bg-[#122316] border border-[#234b2a] text-[#8fc0a9] px-2 py-0.5 rounded">
-              BioCLIP 2
+            <span
+              className={`text-[10px] font-mono uppercase border px-2 py-0.5 rounded ${
+                telemetry?.status === 'ready'
+                  ? 'bg-[#122316] border-[#234b2a] text-[#8fc0a9]'
+                  : telemetry?.status === 'loading'
+                  ? 'bg-amber-950/40 border-amber-800 text-amber-300'
+                  : 'bg-zinc-900 border-zinc-700 text-zinc-400'
+              }`}
+            >
+              {telemetry?.status === 'ready'
+                ? 'AI Ready'
+                : telemetry?.status === 'loading'
+                ? 'Loading AI'
+                : 'App Ready'}
             </span>
           </div>
 

@@ -358,10 +358,10 @@ class BioClipService:
                     raw_cosine_sim = (image_features @ self.text_features.T).squeeze(0)
                     cosine_scores = raw_cosine_sim.cpu().float().numpy().tolist()
 
-                    # 2. Calculate logit_scale softmax probabilities: softmax(model.logit_scale.exp() * cosine)
+                    # 2. Calculate logit_scale softmax probabilities: softmax(scale * similarity)
                     scale = self.model.logit_scale.exp().item() if hasattr(self.model, "logit_scale") else 100.0
                     softmax_probs = (
-                        (scale * image_features @ self.text_features.T).softmax(dim=-1)[0].cpu().float().numpy().tolist()
+                        (scale * raw_cosine_sim).softmax(dim=-1).cpu().float().numpy().tolist()
                     )
 
         except Exception as e:

@@ -3,9 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { fetchModelStatus } from '@/src/lib/api';
 import { ModelTelemetry } from '@/src/types';
-import SystemStatusModal from '@/src/components/system/SystemStatusModal';
+
+const SystemStatusModal = dynamic(
+  () => import('@/src/components/system/SystemStatusModal'),
+  { ssr: false }
+);
 
 export default function Header() {
   const pathname = usePathname();
@@ -44,24 +49,24 @@ export default function Header() {
 
   const statusShort =
     modelTelemetry?.status === 'ready'
-      ? 'Ready'
+      ? 'AI Ready'
       : modelTelemetry?.status === 'loading'
-      ? 'Load'
-      : 'Off';
+      ? 'Loading AI'
+      : 'App Ready';
 
   const statusLabel =
     modelTelemetry?.status === 'ready'
-      ? 'Backend AI · Ready'
+      ? 'AI Ready · BioCLIP-2'
       : modelTelemetry?.status === 'loading'
-      ? 'Backend AI · Loading'
-      : 'Backend AI · Offline';
+      ? 'Loading AI Model...'
+      : 'Application Ready · AI Offline';
 
   const statusDotClass =
     modelTelemetry?.status === 'ready'
       ? 'bg-secondary'
       : modelTelemetry?.status === 'loading'
-      ? 'bg-amber-500'
-      : 'bg-red-500';
+      ? 'bg-amber-500 animate-pulse'
+      : 'bg-zinc-400';
 
   return (
     <header className="fixed top-0 w-full z-50 bg-[#f2fcf4]/95 backdrop-blur-md border-b border-[#e5e0d3] shadow-[0_1px_8px_rgba(41,50,45,0.04)] overflow-x-clip">

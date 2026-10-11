@@ -1,13 +1,30 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import Header from '@/src/components/Header';
 import BottomNav from '@/src/components/BottomNav';
-import IdentificationResultsView from '@/src/components/IdentificationResultsView';
-import CameraModal from '@/src/components/CameraModal';
 import { identifyImageFile } from '@/src/lib/api';
 import { IdentificationResult } from '@/src/types';
 import { PRESET_TEST_SPECIMENS } from '@/src/lib/sampleData';
+
+const IdentificationResultsView = dynamic(
+  () => import('@/src/components/IdentificationResultsView'),
+  {
+    loading: () => (
+      <div className="w-full max-w-[1000px] mx-auto px-4 py-16 text-center">
+        <div className="inline-flex items-center gap-2 text-sm text-secondary animate-pulse">
+          <span className="w-2.5 h-2.5 rounded-full bg-secondary" />
+          <span>Rendering specimen telemetry...</span>
+        </div>
+      </div>
+    ),
+  }
+);
+
+const CameraModal = dynamic(() => import('@/src/components/CameraModal'), {
+  ssr: false,
+});
 
 export default function IdentifyPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -261,6 +278,8 @@ export default function IdentifyPage() {
                       <img
                         src={specimen.image_url}
                         alt={specimen.name}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover transition-transform group-hover:scale-105"
                       />
                     </div>

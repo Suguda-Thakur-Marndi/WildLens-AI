@@ -206,6 +206,8 @@ export default function JournalPage() {
                     <img
                       src={obs.photo_url}
                       alt={obs.common_name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
