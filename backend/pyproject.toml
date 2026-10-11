@@ -16,9 +16,22 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pillow>=10.4.0",
     "psutil>=6.0.0",
-    "pytest>=8.0.0",
     "httpx>=0.27.0"
 ]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0"
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
@@ -32,4 +45,3 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]
 ignore = ["E501", "B008"]
-
