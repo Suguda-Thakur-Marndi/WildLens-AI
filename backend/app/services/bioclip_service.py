@@ -21,6 +21,11 @@ from app.utils.image_processing import validate_and_decode_image
 
 logger = logging.getLogger("wildlens.bioclip")
 
+MUSHROOM_SAFETY_WARNING = (
+    "Mushroom Safety Warning: Never forage or consume wild mushrooms based on computer vision identification. "
+    "Many edible mushrooms have deadly toxic lookalikes (e.g. Amanita phalloides). Always consult an expert mycologist."
+)
+
 
 class BioClipService:
     _instance: Optional["BioClipService"] = None
@@ -67,9 +72,8 @@ class BioClipService:
 
     def _determine_device_and_precision(self) -> tuple[str, str]:
         """
-        Determines target device and floating point precision based on VISION_DEVICE (auto|cuda|cpu)
-        and available hardware telemetry. If sharing 8GB GPU with Qwen3-8B (4-bit), reserves VRAM
-        and falls back to CPU if memory is insufficient.
+        Determines target device and floating point precision based on VISION_DEVICE (auto|cuda|cpu).
+        Uses fp16 on CUDA. Falls back to CPU gracefully if CUDA is unavailable or VRAM is exhausted.
         """
         setting = self.target_device_setting
         if setting == "cpu":
@@ -83,14 +87,11 @@ class BioClipService:
         # Check VRAM headroom on CUDA device
         try:
             free_vram, total_vram = torch.cuda.mem_get_info()
-            # BioCLIP-2 in fp16 requires ~850MB-1.2GB VRAM.
-            # Qwen3-8B in 4-bit NF4 requires ~5.5GB VRAM.
-            # If free VRAM is under 1.0GB, fall back to CPU to prevent CUDA OOM.
-            min_free_vram_bytes = 1024 * 1024 * 1024  # 1 GB
+            min_free_vram_bytes = 500 * 1024 * 1024  # 500 MB minimum for BioCLIP-2 fp16
             if setting == "auto" and free_vram < min_free_vram_bytes:
                 logger.warning(
-                    f"Insufficient free VRAM for BioCLIP-2 ({free_vram / (1024 * 1024):.1f} MB free out of {total_vram / (1024 * 1024):.1f} MB). "
-                    "Falling back to CPU to preserve GPU memory for Qwen3-8B language layer."
+                    f"Insufficient free VRAM for BioCLIP-2 ({free_vram / (1024 * 1024):.1f} MB free). "
+                    "Falling back to CPU."
                 )
                 return "cpu", "fp32"
         except Exception as vram_err:
@@ -102,22 +103,6 @@ class BioClipService:
         vision_mem_mb = None
         if torch.cuda.is_available() and self.device == "cuda":
             vision_mem_mb = round(torch.cuda.memory_allocated() / (1024 * 1024), 2)
-
-        # Pull Language Layer telemetry for unified system status
-        llm_status = None
-        llm_device = None
-        llm_mem_mb = None
-        llm_model_id = "Qwen/Qwen3-8B"
-        llm_license = "Apache-2.0"
-        try:
-            from app.services.llm_service import LLMService
-            llm_info = LLMService.get_instance().get_status_info()
-            llm_status = llm_info.get("status")
-            llm_device = llm_info.get("device")
-            llm_mem_mb = llm_info.get("memory_usage_mb")
-            llm_model_id = llm_info.get("model_id", "Qwen/Qwen3-8B")
-        except Exception:
-            pass
 
         return ModelStatusResponse(
             status=self.status,
@@ -133,11 +118,6 @@ class BioClipService:
             vision_model_license=settings.model_license,
             vision_device=self.device,
             vision_memory_mb=vision_mem_mb,
-            llm_model_id=llm_model_id,
-            llm_model_license=llm_license,
-            llm_status=llm_status,
-            llm_device=llm_device,
-            llm_memory_mb=llm_mem_mb,
         )
 
     def load_model(self, force_reload: bool = False) -> bool:
@@ -258,21 +238,11 @@ class BioClipService:
                 self.status = "ready"
                 self.last_error = None
 
-                # Log device landing for both vision and language models
+                # Log device landing for BioCLIP-2 vision model
                 logger.info(
-                    f"Vision model '{self.model_id}' landed on device '{self.device}' "
+                    f"BioCLIP-2 vision model '{self.model_id}' landed on device '{self.device}' "
                     f"(precision: {self.precision}, load_time: {self.load_time_seconds}s)."
                 )
-                try:
-                    from app.services.llm_service import LLMService
-                    llm_inst = LLMService.get_instance()
-                    logger.info(
-                        f"Language model '{llm_inst.model_id}' status: '{llm_inst.status}' "
-                        f"on device '{llm_inst.device}'."
-                    )
-                except Exception:
-                    pass
-
                 return True
 
             except Exception as e:
@@ -414,11 +384,29 @@ class BioClipService:
         ood_threshold = float(getattr(settings, "out_of_distribution_threshold", 0.60))
 
         # Build top-k candidate species (top 5 evaluated candidates)
+        generic_prompt = "Not sure. Check leaf edges, bark, habitat, and markings."
         top_k_predictions: List[CandidateSpecies] = []
         for idx in ranked_indices[:5]:
             entry = self.candidate_taxa[idx]
             sim = round(float(cosine_scores[idx]), 4)
             prob = round(float(softmax_probs[idx]), 4)
+
+            # Field traits and lookalike warnings come strictly from curated knowledgebase
+            raw_traits = entry.get("visual_characteristics", [])
+            raw_distinguishing = entry.get("distinguishing_features", [])
+            raw_tip = entry.get("field_verification_tip", "")
+
+            visual_traits = list(raw_traits) if raw_traits else [generic_prompt]
+            distinguishing = list(raw_distinguishing) if raw_distinguishing else [generic_prompt]
+            field_tip = raw_tip if raw_tip else generic_prompt
+
+            is_entry_fungi = (
+                entry.get("taxonomy", {}).get("kingdom", "").lower() == "fungi"
+                or "fung" in entry.get("common_name", "").lower()
+                or "mushroom" in entry.get("common_name", "").lower()
+            )
+            if is_entry_fungi and MUSHROOM_SAFETY_WARNING not in distinguishing:
+                distinguishing.insert(0, MUSHROOM_SAFETY_WARNING)
 
             top_k_predictions.append(
                 CandidateSpecies(
@@ -429,11 +417,11 @@ class BioClipService:
                     softmax_density=prob,
                     confidence=prob,  # Closed-set softmax probability across candidate catalog
                     taxonomy=TaxonomicHierarchy(**entry["taxonomy"]),
-                    visual_characteristics=entry.get("visual_characteristics", []),
-                    distinguishing_features=entry.get("distinguishing_features", []),
+                    visual_characteristics=visual_traits,
+                    distinguishing_features=distinguishing,
                     lookalikes=entry.get("lookalikes", []),
                     habitat_notes=entry.get("habitat_notes", ""),
-                    field_verification_tip=entry.get("field_verification_tip", ""),
+                    field_verification_tip=field_tip,
                 )
             )
 
@@ -488,9 +476,27 @@ class BioClipService:
             primary_candidate = top_k_predictions[0]
             alternative_candidates = top_k_predictions[1:]
 
+        # Fungi Safety Guard: Every fungi result carries mandatory mushroom warning
+        is_primary_fungi = (
+            (primary_entry.get("taxonomy") and primary_entry["taxonomy"].get("kingdom", "").lower() == "fungi")
+            or "fung" in primary_entry.get("common_name", "").lower()
+            or "mushroom" in primary_entry.get("common_name", "").lower()
+        )
+        if is_primary_fungi:
+            if uncertainty_warning:
+                uncertainty_warning = f"{MUSHROOM_SAFETY_WARNING} {uncertainty_warning}"
+            else:
+                uncertainty_warning = MUSHROOM_SAFETY_WARNING
+
+        safety_reminder = (
+            "Touch Grass Principle: Observe from a respectful distance. Never touch unknown wild fungi, insects, or plants with defensive toxins. Do not feed or disturb wildlife."
+        )
+        if is_primary_fungi:
+            safety_reminder = f"{MUSHROOM_SAFETY_WARNING} {safety_reminder}"
+
         inspection_prompts = [
-            f"Check key trait: {primary_entry.get('field_verification_tip', 'Inspect morphology.')}",
-            f"Look for distinguishing marker: {primary_entry['distinguishing_features'][0] if primary_entry.get('distinguishing_features') else 'Observe specimen.'}",
+            f"Check key trait: {primary_entry.get('field_verification_tip', generic_prompt)}",
+            f"Look for distinguishing marker: {primary_entry['distinguishing_features'][0] if primary_entry.get('distinguishing_features') else generic_prompt}",
             "Step back and observe behavior and habitat: note tree species, sunlight level, or flight style without disturbing the subject.",
         ]
 
@@ -511,9 +517,7 @@ class BioClipService:
             uncertainty_rating=uncertainty_rating,
             uncertainty_warning=uncertainty_warning,
             suggested_outdoor_inspection=inspection_prompts,
-            safety_and_ethics_reminder=(
-                "Touch Grass Principle: Observe from a respectful distance. Never touch unknown wild fungi, insects, or plants with defensive toxins. Do not feed or disturb wildlife."
-            ),
+            safety_and_ethics_reminder=safety_reminder,
             inference_time_ms=inference_ms,
             model_identifier=self.model_id,
             offline_verified=True,

@@ -13,7 +13,6 @@ import torch
 
 # 1. Force offline mode in Hugging Face Hub
 os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 # 2. Block all non-loopback network calls at the socket level to simulate network disconnect
 _real_create_connection = socket.create_connection

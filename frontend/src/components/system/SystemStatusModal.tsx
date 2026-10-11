@@ -64,12 +64,6 @@ export default function SystemStatusModal({
   const visionDevice = (telemetry?.vision_device || telemetry?.device || 'cpu').toUpperCase();
   const visionMemMb = telemetry?.vision_memory_mb ?? telemetry?.memory_usage_mb;
 
-  const llmModelId = telemetry?.llm_model_id || 'Qwen/Qwen3-8B';
-  const llmLicense = telemetry?.llm_model_license || 'Apache-2.0';
-  const llmStatus = telemetry?.llm_status || 'ready';
-  const llmDevice = (telemetry?.llm_device || 'cpu').toUpperCase();
-  const llmMemMb = telemetry?.llm_memory_mb;
-
   return (
     <div
       role="dialog"
@@ -92,7 +86,7 @@ export default function SystemStatusModal({
                 System Architecture & Hardware Telemetry
               </h2>
               <p className="text-[11px] sm:text-xs text-[#526354]">
-                Dual-layer local edge AI: BioCLIP-2 Vision + Qwen3 Language Layer
+                Single-model edge AI: BioCLIP-2 Vision Backbone + Curated Natural History KB
               </p>
             </div>
           </div>
@@ -116,7 +110,7 @@ export default function SystemStatusModal({
                 }`}
               />
               <span className="font-semibold text-[#1b4332]">
-                {isReady ? '100% Offline Edge Verified · Standalone Local AI' : 'AI Engine Initializing...'}
+                {isReady ? '100% Offline Edge Verified · Single BioCLIP 2 Model' : 'AI Engine Initializing...'}
               </span>
             </div>
             <button
@@ -131,7 +125,7 @@ export default function SystemStatusModal({
             </button>
           </div>
 
-          {/* Model Pair Cards Grid */}
+          {/* Architecture Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Vision Model Card (BioCLIP-2) */}
             <div className="flex flex-col p-4 rounded-xl bg-white border border-[#e2dec9] shadow-sm relative overflow-hidden">
@@ -148,7 +142,7 @@ export default function SystemStatusModal({
                 {visionModelId}
               </h3>
               <p className="text-[11px] text-[#526354] mb-3">
-                ViT-L/14 transformer trained on TreeOfLife-200M (200M biological photos across 454k+ taxa).
+                ViT-L/14 transformer trained on TreeOfLife-200M (200M biological photos across the Tree of Life).
               </p>
 
               <div className="space-y-1.5 mt-auto pt-2 border-t border-[#f0ede1] text-xs">
@@ -175,42 +169,40 @@ export default function SystemStatusModal({
               </div>
             </div>
 
-            {/* Language Layer Card (Qwen3-8B) */}
+            {/* Curated Natural History & Safety Card */}
             <div className="flex flex-col p-4 rounded-xl bg-white border border-[#e2dec9] shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-[#c48e28]/5 rounded-bl-full pointer-events-none" />
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#916518] bg-[#fbf3db] px-2 py-0.5 rounded-md">
-                  Language Layer
+                  Taxonomy & Safety
                 </span>
                 <span className="text-[10px] font-semibold text-[#526354] bg-[#f4f2ea] px-2 py-0.5 rounded">
-                  License: {llmLicense}
+                  Curated KB
                 </span>
               </div>
-              <h3 className="font-bold text-[#1b4332] text-base mb-1 font-mono break-all">
-                {llmModelId}
+              <h3 className="font-bold text-[#1b4332] text-base mb-1 font-mono">
+                taxonomy_kb.py
               </h3>
               <p className="text-[11px] text-[#526354] mb-3">
-                Zero-hallucination natural history explainer & Touch Grass field guide missions.
+                Zero-hallucination deterministic botanical and zoological trait knowledge base with mandatory fungi guards.
               </p>
 
               <div className="space-y-1.5 mt-auto pt-2 border-t border-[#f0ede1] text-xs">
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Quantization:</span>
-                  <span className="font-semibold text-[#1b4332]">4-bit NF4 / Transformers</span>
+                  <span className="text-[#6c786e]">Curated Species:</span>
+                  <span className="font-semibold text-[#1b4332]">{telemetry?.supported_taxa_count || 36} verified taxa</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Execution Device:</span>
-                  <span className="font-semibold text-[#1b4332] font-mono">{llmDevice}</span>
+                  <span className="text-[#6c786e]">Hallucination Risk:</span>
+                  <span className="font-semibold text-[#2e6b47]">0% (Deterministic KB)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Runtime Status:</span>
-                  <span className="font-semibold text-[#1b4332] capitalize">{llmStatus}</span>
+                  <span className="text-[#6c786e]">Mushroom Guard:</span>
+                  <span className="font-semibold text-[#b91c1c]">Active (Never Eat Wild Fungi)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Memory Footprint:</span>
-                  <span className="font-semibold text-[#1b4332]">
-                    {llmMemMb ? `${llmMemMb} MB VRAM` : '~5.5 GB (4-bit NF4)'}
-                  </span>
+                  <span className="text-[#6c786e]">Confidence Bands:</span>
+                  <span className="font-semibold text-[#1b4332]">likely / possible / unsure</span>
                 </div>
               </div>
             </div>

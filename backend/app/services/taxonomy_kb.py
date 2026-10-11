@@ -1102,3 +1102,91 @@ TAXONOMY_DATABASE: List[Dict[str, Any]] = [
         "field_verification_tip": "Look at the edge of the shell: Painted Turtles have brilliant red markings painted around the rim of the carapace."
     }
 ]
+
+# ==============================================================================
+# TAXONOMY EXTENSION REGISTRY: HOW TO CONTRIBUTE AND ADD NEW SPECIES
+# ==============================================================================
+# All biological traits must be grounded in peer-reviewed or verifiable natural
+# history literature (e.g. Audubon, Sibley, Peterson, USDA Plants).
+# NEVER fabricate diagnostic traits or hallucinate lookalikes.
+#
+# TEMPLATE FOR CONTRIBUTING SPECIES:
+# {
+#     "id": "<genus_species>",
+#     "common_name": "<Common English Name>",
+#     "scientific_name": "<Binomial nomenclature>",
+#     "taxonomy": {
+#         "kingdom": "Plantae | Animalia | Fungi",
+#         "phylum": "...",
+#         "class": "...",
+#         "order": "...",
+#         "family": "...",
+#         "genus": "...",
+#         "species": "..."
+#     },
+#     "visual_characteristics": [
+#         "<Observable macroscopic feature 1>",
+#         "<Observable macroscopic feature 2>",
+#     ],
+#     "distinguishing_features": [
+#         "<Key trait separating this from nearest relatives in field>"
+#     ],
+#     "lookalikes": [
+#         "<Lookalike Species (Scientific name) - key morphological difference>"
+#     ],
+#     "habitat_notes": "<Ecosystem, biome, light/moisture preferences>",
+#     "field_verification_tip": "<One-line actionable sensory prompt for outdoor inspection>",
+#     "verification_status": "verified | needs_human_verification"
+# }
+# ==============================================================================
+
+# Species entries cataloged in the curated database with verified traits
+VERIFIED_TAXA: List[str] = [t["id"] for t in TAXONOMY_DATABASE]
+
+# Track candidate additions that require specialist in-field human verification:
+NEEDS_HUMAN_VERIFICATION: List[str] = [
+    "tsuga_canadensis",        # Eastern Hemlock (needle underside stomatal bands verification)
+    "betula_alleghaniensis",   # Yellow Birch (wintergreen scent scrape check)
+    "amanita_bisporigera",     # Eastern Destroying Angel (strict toxic mycological confirmation)
+    "poecile_atricapillus",    # Black-capped Chickadee (distinction from Carolina Chickadee)
+]
+
+
+def get_curated_traits(identifier: str) -> Dict[str, Any]:
+    """
+    Safely retrieves curated field traits for a given taxon ID or common/scientific name.
+    If the species has no entry in the knowledgebase, returns honest fallback prompts.
+    Never fabricates biological facts.
+    """
+    clean = identifier.lower().strip()
+    for entry in TAXONOMY_DATABASE:
+        if (
+            entry["id"] == clean
+            or entry["scientific_name"].lower() == clean
+            or entry["common_name"].lower() == clean
+        ):
+            return {
+                "common_name": entry["common_name"],
+                "scientific_name": entry["scientific_name"],
+                "taxonomy": entry["taxonomy"],
+                "visual_characteristics": entry["visual_characteristics"],
+                "distinguishing_features": entry["distinguishing_features"],
+                "lookalikes": entry.get("lookalikes", []),
+                "habitat_notes": entry.get("habitat_notes", ""),
+                "field_verification_tip": entry.get("field_verification_tip", ""),
+                "has_curated_entry": True,
+            }
+
+    generic_prompt = "Not sure. Check leaf edges, bark, habitat, and markings."
+    return {
+        "common_name": identifier,
+        "scientific_name": "",
+        "taxonomy": {},
+        "visual_characteristics": [generic_prompt],
+        "distinguishing_features": [generic_prompt],
+        "lookalikes": [],
+        "habitat_notes": "",
+        "field_verification_tip": generic_prompt,
+        "has_curated_entry": False,
+    }
+

@@ -11,7 +11,7 @@ class Settings(BaseModel):
     version: str = "1.0.0"
     debug: bool = False
 
-    host: str = Field(default_factory=lambda: os.getenv("HOST", "127.0.0.1"))
+    host: str = Field(default_factory=lambda: os.getenv("WILDLENS_HOST", os.getenv("HOST", "127.0.0.1")))
     port: int = Field(default_factory=lambda: int(os.getenv("PORT", "8000")))
 
     model_identifier: str = Field(
@@ -61,5 +61,4 @@ settings = Settings()
 # Lock offline environment variables if local cache exists
 if Path(settings.model_cache_dir).exists():
     os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
 

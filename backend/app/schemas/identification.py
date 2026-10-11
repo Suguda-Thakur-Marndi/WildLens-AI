@@ -70,16 +70,11 @@ class ModelStatusResponse(BaseModel):
     memory_usage_mb: Optional[float] = None
     offline_capable: bool = True
 
-    # Detailed Vision and Language layer telemetry
+    # Detailed Vision layer telemetry
     vision_model_id: str = "imageomics/bioclip-2"
     vision_model_license: str = "MIT"
     vision_device: str = "cpu"
     vision_memory_mb: Optional[float] = None
-    llm_model_id: Optional[str] = "Qwen/Qwen3-8B"
-    llm_model_license: Optional[str] = "Apache-2.0"
-    llm_status: Optional[str] = None
-    llm_device: Optional[str] = None
-    llm_memory_mb: Optional[float] = None
 
 
 class HealthResponse(BaseModel):

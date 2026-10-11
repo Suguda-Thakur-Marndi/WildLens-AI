@@ -1,355 +1,678 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import Header from '@/src/components/Header';
-import BottomNav from '@/src/components/BottomNav';
-import { SAMPLE_OBSERVATIONS } from '@/src/lib/sampleData';
+import { identifyImageFile } from '@/src/lib/api';
+import { IdentificationResult } from '@/src/types';
+import { PRESET_TEST_SPECIMENS } from '@/src/lib/sampleData';
 
-export default function ExplorePage() {
-  const recentObservations = SAMPLE_OBSERVATIONS.slice(1, 5);
+type FieldModeStep = 'camera' | 'analyzing' | 'glance' | 'lookup';
 
-  return (
-    <div className="min-h-screen bg-background text-on-surface flex flex-col pb-20 lg:pb-0">
-      <Header />
+const SENSORY_PROMPTS = [
+  'Look up at the canopy or horizon. Take three deep breaths and feel the wind on your face.',
+  'Close your eyes for 30 seconds. Listen closely: how many distinct bird calls or leaf rustles can you separate?',
+  'Notice the soil, bark, or stone beneath your feet. What colors and textures exist without a screen?',
+  'Look at the light filtering through the branches. Observe how shadows shift with the breeze.',
+];
 
-      <main className="w-full pt-20 flex-1">
-        {/* Top Subtle Utility Bar / Status Strip */}
-        <section className="w-full bg-surface-container-low/70 border-b border-[#e5e0d3]">
-          <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-10 py-2 flex flex-wrap items-center justify-between gap-2 text-on-surface-variant font-body-sm text-xs">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-surface-container text-primary font-label-sm font-semibold border border-[#e5e0d3]">
-                <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                BioCLIP v1.4 Engine Active
-              </span>
-              <span className="text-on-surface-variant/40">·</span>
-              <span className="flex items-center gap-1 text-on-surface-variant font-label-sm">
-                <span className="material-symbols-outlined text-[15px] text-secondary">
-                  signal_cellular_off
-                </span>
-                Offline Cache Armed
-              </span>
-            </div>
+export default function FieldModeLandingPage() {
+  const [step, setStep] = useState<FieldModeStep>('camera');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [result, setResult] = useState<IdentificationResult | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState(60);
+  const [sensoryPrompt, setSensoryPrompt] = useState(SENSORY_PROMPTS[0]);
 
-            <div className="flex items-center gap-3 text-on-surface-variant font-label-sm">
-              <span className="hidden sm:inline">Local Storage: 5 Specimen Dossiers</span>
-              <span className="text-on-surface-variant/40 hidden sm:inline">·</span>
-              <span className="text-secondary font-editorial-italic italic font-serif">
-                Field Log No. 04
-              </span>
-            </div>
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Stop camera tracks cleanly
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn('Track stop error:', e);
+        }
+      });
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  }, []);
+
+  // Start camera stream
+  const startCamera = useCallback(
+    async (mode: 'environment' | 'user' = facingMode) => {
+      stopCamera();
+      setCameraError(null);
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError('Camera API unavailable. You can use image upload below.');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: mode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+          setCameraActive(true);
+        }
+      } catch (err: any) {
+        console.warn('Camera start error:', err);
+        setCameraError(
+          err.name === 'NotAllowedError'
+            ? 'Camera permission denied. Use file upload or enable camera in browser settings.'
+            : 'Unable to access camera. Use file upload below.'
+        );
+      }
+    },
+    [facingMode, stopCamera]
+  );
+
+  // Initialize camera when entering camera step
+  useEffect(() => {
+    if (step === 'camera') {
+      startCamera(facingMode);
+    } else {
+      stopCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+  }, [step, facingMode, startCamera, stopCamera]);
+
+  // Handle 60s Look Up Screen Timer
+  useEffect(() => {
+    if (step !== 'lookup') return;
+
+    setTimerSeconds(60);
+    // Pick a random sensory prompt
+    const randomPrompt = SENSORY_PROMPTS[Math.floor(Math.random() * SENSORY_PROMPTS.length)];
+    setSensoryPrompt(randomPrompt);
+
+    const interval = setInterval(() => {
+      setTimerSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          handleReturnToCamera();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step]);
+
+  // Capture frame from live video
+  const handleCapture = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], 'field_capture.jpg', { type: 'image/jpeg' });
+        const preview = URL.createObjectURL(blob);
+        setCapturedImage(preview);
+        await processIdentification(file, preview);
+      },
+      'image/jpeg',
+      0.9
+    );
+  };
+
+  // Process identification with BioCLIP-2
+  const processIdentification = async (file: File, previewUrl: string) => {
+    setStep('analyzing');
+    try {
+      const res = await identifyImageFile(file);
+      if (!res.image_url || res.image_url.startsWith('blob:')) {
+        res.image_url = previewUrl;
+      }
+      setResult(res);
+      setStep('glance');
+    } catch (err: any) {
+      alert(err.message || 'Identification failed. Please try another shot.');
+      setStep('camera');
+    }
+  };
+
+  // Handle file upload fallback
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const preview = URL.createObjectURL(file);
+    setCapturedImage(preview);
+    await processIdentification(file, preview);
+  };
+
+  // Handle sample specimen preset click
+  const handleSampleSelect = async (specimen: typeof PRESET_TEST_SPECIMENS[0]) => {
+    setCapturedImage(specimen.image_url);
+    try {
+      const resp = await fetch(specimen.image_url);
+      const blob = await resp.blob();
+      const file = new File([blob], specimen.file, { type: 'image/jpeg' });
+      await processIdentification(file, specimen.image_url);
+    } catch {
+      // Fallback dummy file
+      const file = new File([], specimen.file, { type: 'image/jpeg' });
+      await processIdentification(file, specimen.image_url);
+    }
+  };
+
+  const handleFlipCamera = () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
+    startCamera(nextMode);
+  };
+
+  const handleReturnToCamera = () => {
+    setResult(null);
+    setCapturedImage(null);
+    setStep('camera');
+  };
+
+  // Determine Confidence Band
+  const getConfidenceBand = (res: IdentificationResult | null) => {
+    if (!res) return { label: 'Unsure', color: 'bg-zinc-700 text-zinc-100 border-zinc-500' };
+    const conf = res.top_candidate?.confidence ?? 0;
+    const status = res.confidence_status;
+
+    if (status === 'confident' || conf >= 0.7) {
+      return { label: 'Likely', color: 'bg-[#1b4332] text-[#8fc0a9] border-[#2e6b47]' };
+    }
+    if (status === 'moderate' || conf >= 0.4) {
+      return { label: 'Possible', color: 'bg-[#43321b] text-[#fcd34d] border-[#855e1b]' };
+    }
+    return { label: 'Unsure', color: 'bg-zinc-800 text-zinc-300 border-zinc-600' };
+  };
+
+  // One-line trait
+  const getOneLineTrait = (res: IdentificationResult | null) => {
+    if (!res) return 'Not sure. Check leaf edges, bark, habitat, and markings.';
+    const traits = res.top_candidate?.distinguishing_features || res.distinguishing_features;
+    if (traits && traits.length > 0 && traits[0].trim()) {
+      return traits[0];
+    }
+    if (res.top_candidate?.field_verification_tip) {
+      return res.top_candidate.field_verification_tip;
+    }
+    return 'Not sure. Check leaf edges, bark, habitat, and markings.';
+  };
+
+  // Check if Fungi
+  const isFungi = (res: IdentificationResult | null) => {
+    if (!res) return false;
+    const kingdom = (res.top_candidate?.kingdom || '').toLowerCase();
+    const common = (res.top_candidate?.common_name || '').toLowerCase();
+    const scientific = (res.top_candidate?.scientific_name || '').toLowerCase();
+    return (
+      kingdom.includes('fungi') ||
+      common.includes('mushroom') ||
+      common.includes('agaric') ||
+      common.includes('chanterelle') ||
+      common.includes('fungus') ||
+      scientific.includes('amanita')
+    );
+  };
+
+  // -------------------------------------------------------------
+  // RENDER STEP 1: "NOW LOOK UP" SCREEN (Dims to near-black)
+  // -------------------------------------------------------------
+  if (step === 'lookup') {
+    return (
+      <div
+        onClick={handleReturnToCamera}
+        className="fixed inset-0 z-50 bg-[#050805] text-[#e0efe2] flex flex-col items-center justify-between p-6 sm:p-10 select-none cursor-pointer transition-colors duration-1000"
+      >
+        {/* Subtle Top Dismiss Hint */}
+        <div className="w-full max-w-md flex justify-between items-center text-xs tracking-widest text-[#526a56] uppercase">
+          <span>Look Up Screen</span>
+          <span>Tap anywhere to exit</span>
+        </div>
+
+        {/* Central Mindful Prompt */}
+        <div className="w-full max-w-lg my-auto text-center space-y-8">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-[#122316] border border-[#234b2a] flex items-center justify-center text-[#8fc0a9] shadow-inner">
+            <span className="material-symbols-outlined text-3xl sm:text-4xl animate-pulse">
+              visibility
+            </span>
           </div>
-        </section>
 
-        {/* Editorial Hero Section */}
-        <section className="w-full relative overflow-hidden bg-background">
-          <div className="max-w-[1280px] mx-auto px-3.5 sm:px-6 lg:px-10 py-8 sm:py-10 lg:py-16">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-              {/* Left Column: Typography & Intent */}
-              <div className="lg:col-span-7 flex flex-col items-start space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-secondary-container text-on-secondary-container border border-secondary/30">
-                  <span className="material-symbols-outlined text-[15px]">eco</span>
-                  <span className="font-label-sm text-[11px] uppercase tracking-widest font-semibold">
-                    Autonomous Naturalist Instrument
-                  </span>
-                </div>
-
-                <h1 className="font-display-lg text-3xl xs:text-4xl sm:text-5xl lg:text-[54px] font-serif text-primary tracking-tight max-w-xl leading-[1.15] break-words">
-                  A little more curious.<br />
-                  <span className="font-editorial-italic text-secondary italic font-normal">
-                    A little less scrolling.
-                  </span>
-                </h1>
-
-                <p className="font-body-lg text-base sm:text-lg text-on-surface-variant max-w-xl leading-relaxed">
-                  Identify plants, fungi, birds, and insects in seconds using an open-weight BioCLIP model running entirely on your device. Zero cloud sync required. Built for the remote trail, not the endless feed.
-                </p>
-
-                <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                  <Link
-                    href="/identify"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg bg-primary text-on-primary font-label-md text-sm hover:bg-primary-container transition-all shadow-sm font-semibold min-h-[44px]"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">center_focus_strong</span>
-                    <span>Identify Something</span>
-                  </Link>
-
-                  <Link
-                    href="/missions"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg bg-surface-container-lowest text-primary font-label-md text-sm hover:bg-surface-container transition-colors shadow-sm plate-border font-semibold min-h-[44px]"
-                  >
-                    <span className="material-symbols-outlined text-[20px] text-secondary">explore</span>
-                    <span>Explore Field Missions</span>
-                  </Link>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2 text-on-surface-variant font-label-sm text-xs">
-                  <span className="inline-flex p-1 rounded-full bg-surface-container text-secondary flex-shrink-0">
-                    <span className="material-symbols-outlined text-[14px]">lock</span>
-                  </span>
-                  <span>100% On-device inference · Works with zero cell service</span>
-                </div>
-              </div>
-
-              {/* Right Column: Naturalist Composition / Visual Plate */}
-              <div className="lg:col-span-5 relative w-full">
-                <div className="relative bg-surface-container-lowest rounded-xl p-3.5 sm:p-4 plate-border shadow-md w-full">
-                  {/* Archival Header Label */}
-                  <div className="flex items-center justify-between pb-3 text-on-surface-variant font-label-sm text-xs">
-                    <span className="uppercase tracking-wider font-semibold">Specimen Plate: #082-TR</span>
-                    <span className="font-editorial-italic text-secondary italic font-serif">
-                      Temperate Old Growth
-                    </span>
-                  </div>
-
-                  {/* Primary Specimen Image with Aspect Ratio */}
-                  <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden bg-surface-dim">
-                    <img
-                      className="w-full h-full object-cover"
-                      alt="Close up photograph of lush green moss and wild fern in ancient Pacific rainforest"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjT3TGfSdp5sHWY7UHHD6rBzip6dhTM7D9BjIlAkgd1tCZRYc5_xnFAoTBu1PRCsyVDQ3xjuEJ3uQTX2ULA63mw_MDnvJGyA_inoZWJgsx2pxPq2KJ0fzgwlCKuGtFj3ysLmWcK4tCyRDCCcYK2epP_a5a0_-tTUpIbEWEaB5Q2VEG9OIv7ReMnLGtX7aIa8SMo4EQkEizdOpJzkSRClofO_Q3ed_ACb1OWyCFYWxHKnjlKvoCioVu"
-                    />
-                    <div className="absolute bottom-3 left-3 bg-[#f2fcf4]/95 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-2 border border-[#e5e0d3] max-w-[calc(100%-1.5rem)]">
-                      <span className="w-2 h-2 rounded-full bg-secondary flex-shrink-0"></span>
-                      <span className="font-label-sm text-xs text-primary font-semibold truncate">
-                        WebGPU Match: 97.4%
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Marginalia Notes */}
-                  <div className="pt-4 grid grid-cols-2 gap-2 text-left">
-                    <div className="p-2.5 rounded-lg bg-surface-container-low border border-[#e5e0d3]">
-                      <span className="block font-label-sm text-[11px] text-on-surface-variant uppercase font-semibold">
-                        Ecosystem
-                      </span>
-                      <span className="font-body-md text-xs sm:text-sm text-primary font-medium truncate block">
-                        Olympic Lowland Rain
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-surface-container-low border border-[#e5e0d3]">
-                      <span className="block font-label-sm text-[11px] text-on-surface-variant uppercase font-semibold">
-                        Classification Latency
-                      </span>
-                      <span className="font-body-md text-xs sm:text-sm text-primary font-medium truncate block">
-                        18ms Neural Engine
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Secondary Overlapping Field Card (shown on md+ to avoid mobile/tablet overflow) */}
-                <div className="hidden md:flex absolute -bottom-5 -left-4 lg:-left-6 bg-surface-container-high rounded-xl p-3 shadow-md items-center gap-3 max-w-xs plate-border">
-                  <span className="material-symbols-outlined text-primary text-[28px] flex-shrink-0">nature</span>
-                  <div className="text-left">
-                    <p className="font-label-sm text-xs text-secondary uppercase font-semibold">
-                      Local Herbarium
-                    </p>
-                    <p className="font-body-sm text-xs text-primary font-medium">
-                      Encrypted on hardware storage
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="space-y-4">
+            <h2 className="font-serif text-2xl sm:text-3xl text-[#d4ead6] font-bold tracking-tight">
+              Now Look Up.
+            </h2>
+            <p className="font-serif italic text-base sm:text-lg text-[#9cbba0] leading-relaxed max-w-md mx-auto">
+              “{sensoryPrompt}”
+            </p>
           </div>
-        </section>
 
-        {/* Mission of the Day: Highlight Section */}
-        <section className="w-full py-4 bg-background">
-          <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-10">
-            <div className="bg-surface-container-low rounded-xl p-6 md:p-8 plate-border shadow-sm">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                <div className="lg:col-span-8 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-lg bg-secondary-fixed text-on-secondary-fixed font-label-sm text-xs font-semibold tracking-wide uppercase border border-secondary/30">
-                      Field Mission of the Day
-                    </span>
-                    <span className="flex items-center gap-1 font-label-sm text-xs text-on-surface-variant">
-                      <span className="material-symbols-outlined text-[15px]">timer</span>
-                      10 min · Easy outdoor observation
-                    </span>
-                  </div>
-
-                  <h2 className="font-headline-lg text-2xl md:text-3xl font-serif text-primary pt-1 font-medium">
-                    The Lichen Micro-Safari
-                  </h2>
-
-                  <p className="font-body-md text-sm md:text-base text-on-surface-variant max-w-2xl leading-relaxed">
-                    Find three distinct species of lichen on tree bark, stone, or old timber. Learn to distinguish between crustose (crust-like), foliose (leafy), and fruticose (shrubby hair-like) morphologies.
-                  </p>
-                </div>
-
-                <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col items-start lg:items-end justify-center gap-3">
-                  <Link
-                    href="/missions"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg bg-primary text-on-primary font-label-md text-sm hover:bg-primary-container transition-colors shadow-sm font-semibold"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">play_circle</span>
-                    <span>Start Mission</span>
-                  </Link>
-
-                  <span className="font-editorial-italic text-sm text-secondary italic font-serif text-left lg:text-right">
-                    “Look closer; a single boulder holds an entire archipelago.”
-                  </span>
-                </div>
-              </div>
-            </div>
+          {/* 60s Countdown Display */}
+          <div className="flex flex-col items-center justify-center gap-2 pt-4">
+            <span className="font-mono text-5xl sm:text-6xl font-bold tracking-wider text-[#8fc0a9]">
+              00:{timerSeconds < 10 ? `0${timerSeconds}` : timerSeconds}
+            </span>
+            <span className="text-xs text-[#526a56] uppercase tracking-wider">
+              Screen dims to near-black · Breathing pause
+            </span>
           </div>
-        </section>
+        </div>
 
-        {/* Recently Observed in Your Field Journal */}
-        <section className="w-full py-10 bg-background">
-          <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-10">
-            {/* Section Header */}
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-2">
-              <div>
-                <span className="font-label-sm text-xs text-secondary uppercase tracking-widest block mb-1 font-semibold">
-                  Local Specimen Registry
-                </span>
-                <h2 className="font-headline-lg text-2xl md:text-3xl font-serif text-primary font-medium">
-                  Recently Observed in Your Field Journal
-                </h2>
-              </div>
+        {/* Large Glove-Friendly Tap Area Hint */}
+        <div className="w-full max-w-md text-center py-4 border-t border-[#122316]">
+          <button
+            onClick={handleReturnToCamera}
+            className="w-full py-4 rounded-xl bg-[#122316] hover:bg-[#1b3821] text-[#8fc0a9] font-bold text-sm border border-[#234b2a] transition-colors"
+          >
+            Done Looking · Return to Camera
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-              <Link
-                href="/journal"
-                className="inline-flex items-center gap-1 font-label-md text-sm text-primary hover:text-secondary transition-colors group font-semibold"
-              >
-                <span>View all observations in Journal</span>
-                <span className="material-symbols-outlined text-[16px] group-hover:translate-x-0.5 transition-transform">
-                  arrow_forward
-                </span>
-              </Link>
-            </div>
+  // -------------------------------------------------------------
+  // RENDER STEP 2: GLANCEABLE RESULT
+  // -------------------------------------------------------------
+  if (step === 'glance') {
+    const band = getConfidenceBand(result);
+    const trait = getOneLineTrait(result);
+    const fungiWarning = isFungi(result);
 
-            {/* 4-Card Specimen Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {recentObservations.map((obs) => (
-                <article
-                  key={obs.id}
-                  className="bg-surface-container-lowest rounded-xl overflow-hidden plate-border shadow-sm hover:shadow-md transition-shadow flex flex-col"
+    return (
+      <div className="min-h-screen bg-[#08120a] text-[#f4fff4] flex flex-col justify-between p-4 sm:p-6 md:p-8 select-none">
+        {/* Top Header */}
+        <div className="w-full max-w-lg mx-auto flex items-center justify-between border-b border-[#1b3821] pb-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#8fc0a9]" />
+            <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#8fc0a9]">
+              Field Observation · In Situ
+            </span>
+          </div>
+          <button
+            onClick={handleReturnToCamera}
+            className="px-3 py-1.5 rounded-lg bg-[#122316] text-[#8fc0a9] text-xs font-bold border border-[#234b2a] hover:bg-[#1b3821]"
+          >
+            Retake
+          </button>
+        </div>
+
+        {/* Main Glanceable Specimen Card */}
+        <div className="w-full max-w-lg mx-auto my-auto flex flex-col gap-4 py-4">
+          {/* Specimen Visual & Core Identity */}
+          <div className="flex items-center gap-4 bg-[#0d1a10] p-4 rounded-2xl border-2 border-[#234b2a] shadow-lg">
+            {capturedImage && (
+              <img
+                src={capturedImage}
+                alt="Captured specimen"
+                className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border-2 border-[#8fc0a9] flex-shrink-0"
+              />
+            )}
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${band.color}`}
                 >
-                  <div className="relative aspect-[4/3] w-full bg-surface-dim overflow-hidden">
-                    <img
-                      src={obs.photo_url}
-                      alt={obs.common_name}
-                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-                    />
-                    <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-lg bg-[#f2fcf4]/90 text-primary font-label-sm text-[11px] font-semibold border border-[#e5e0d3]">
-                      {obs.status === 'User verified'
-                        ? 'User verified'
-                        : `Likely (${Math.round(obs.certainty)}%)`}
-                    </span>
-                  </div>
-
-                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                    <div>
-                      <span className="font-label-sm text-[11px] text-secondary uppercase block mb-1 font-semibold">
-                        {obs.family}
-                      </span>
-                      <h3 className="font-headline-md text-xl font-serif text-primary leading-tight font-medium">
-                        {obs.common_name}
-                      </h3>
-                      <p className="font-editorial-italic text-sm text-on-surface-variant italic font-serif">
-                        {obs.scientific_name}
-                      </p>
-                    </div>
-
-                    <div className="pt-2 border-t border-[#e5e0d3] flex items-center justify-between text-on-surface-variant font-body-sm text-xs">
-                      <span>{obs.date}</span>
-                      <span className="font-medium text-primary">{obs.location.split('·')[0].trim()}</span>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  {band.label}
+                </span>
+                <span className="text-[11px] text-[#8fc0a9] font-mono">
+                  {result?.similarity_score
+                    ? `cos ${(result.similarity_score).toFixed(2)}`
+                    : `${Math.round((result?.top_candidate?.confidence || 0) * 100)}%`}
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#f4fff4] leading-tight truncate">
+                {result?.top_candidate?.common_name || 'Unidentified Specimen'}
+              </h1>
+              <p className="text-xs sm:text-sm italic text-[#8fc0a9] font-serif truncate">
+                {result?.top_candidate?.scientific_name || 'Incerta sedis'}
+              </p>
             </div>
           </div>
-        </section>
 
-        {/* How WildLens Works (Without the Cloud) */}
-        <section className="w-full py-12 bg-surface-container-low/50 border-t border-[#e5e0d3]">
-          <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-10">
-            <div className="max-w-2xl mx-auto text-center mb-10">
-              <span className="font-label-sm text-xs text-secondary uppercase tracking-widest block mb-1 font-semibold">
-                Ethical Optics
+          {/* Mandatory Fungi Safety Guard Banner */}
+          {fungiWarning && (
+            <div className="bg-[#2d0f0f] border-2 border-[#b91c1c] text-[#fca5a5] p-3.5 rounded-xl flex items-start gap-3">
+              <span className="material-symbols-outlined text-[#ef4444] text-xl flex-shrink-0 mt-0.5">
+                warning
               </span>
-              <h2 className="font-headline-lg text-2xl md:text-3xl font-serif text-primary font-medium">
-                How WildLens Works (Without the Cloud)
-              </h2>
-              <p className="font-body-md text-sm md:text-base text-on-surface-variant mt-2">
-                A purpose-built digital instrument designed to respect both your privacy and the natural environment.
+              <div className="text-xs sm:text-sm leading-snug">
+                <strong className="block font-bold text-[#fecaca] uppercase tracking-wide">
+                  Mushroom Safety Notice
+                </strong>
+                Never consume wild mushrooms based on this app. Even experienced mycologists require spore prints and microscopy.
+              </div>
+            </div>
+          )}
+
+          {/* Curated Diagnostic Trait (1-Line glance) */}
+          <div className="bg-[#122316] p-4 rounded-xl border-l-4 border-[#8fc0a9]">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#8fc0a9] block mb-1">
+              Curated Diagnostic Feature
+            </span>
+            <p className="text-sm sm:text-base text-[#e0efe2] font-medium leading-snug">
+              {trait}
+            </p>
+          </div>
+
+          {/* Outdoor Notice */}
+          <div className="text-center text-xs text-[#628169] py-1">
+            Zero cloud egress · BioCLIP 2 ViT-L/14 on TreeOfLife-200M
+          </div>
+        </div>
+
+        {/* Large Glove-Friendly Actions */}
+        <div className="w-full max-w-lg mx-auto flex flex-col gap-3 pb-2">
+          {/* Primary Action: Touch Grass / Look Up Screen */}
+          <button
+            onClick={() => setStep('lookup')}
+            className="w-full py-4 sm:py-4.5 rounded-xl bg-[#2e6b47] hover:bg-[#398257] active:scale-[0.99] text-[#f4fff4] font-serif font-bold text-base sm:text-lg flex items-center justify-center gap-2 border border-[#439665] shadow-lg transition-transform"
+          >
+            <span className="material-symbols-outlined text-2xl">visibility</span>
+            <span>NOW LOOK UP (60s Screen Break)</span>
+          </button>
+
+          {/* Secondary Action: Return to Camera */}
+          <button
+            onClick={handleReturnToCamera}
+            className="w-full py-3.5 rounded-xl bg-[#122316] hover:bg-[#1a3521] text-[#a0c2a8] font-bold text-sm border border-[#234b2a] transition-colors"
+          >
+            Take Another Photo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RENDER STEP 3: ANALYZING STATE
+  // -------------------------------------------------------------
+  if (step === 'analyzing') {
+    return (
+      <div className="min-h-screen bg-[#08120a] text-[#f4fff4] flex flex-col items-center justify-center p-6 text-center select-none">
+        <div className="w-16 h-16 rounded-full bg-[#122316] border-2 border-[#8fc0a9] flex items-center justify-center animate-spin mb-4">
+          <span className="material-symbols-outlined text-3xl text-[#8fc0a9]">
+            filter_vintage
+          </span>
+        </div>
+        <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#d4ead6] mb-1">
+          Identifying Specimen...
+        </h2>
+        <p className="text-xs text-[#8fc0a9] max-w-xs leading-relaxed">
+          BioCLIP 2 local edge inference across Tree of Life candidate taxonomy.
+        </p>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RENDER STEP 4: DEFAULT CAMERA VIEW (TOUCH GRASS FIELD MODE)
+  // -------------------------------------------------------------
+  return (
+    <div className="min-h-screen bg-[#08120a] text-[#f4fff4] flex flex-col justify-between relative overflow-hidden select-none">
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Top Utility Header */}
+      <header className="relative z-20 w-full bg-[#08120a]/80 backdrop-blur-md border-b border-[#1b3821] px-4 py-3">
+        <div className="max-w-xl mx-auto flex items-center justify-between">
+          {/* Menu Drawer Toggle */}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Open menu"
+            className="w-10 h-10 rounded-xl bg-[#122316] border border-[#234b2a] flex items-center justify-center text-[#8fc0a9] hover:bg-[#1b3821] active:scale-95 transition-all"
+          >
+            <span className="material-symbols-outlined text-2xl">menu</span>
+          </button>
+
+          {/* Field Mode Indicator */}
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#8fc0a9] animate-pulse" />
+            <span className="font-serif font-bold text-sm sm:text-base text-[#f4fff4] tracking-wide">
+              WildLens AI
+            </span>
+            <span className="text-[10px] font-mono uppercase bg-[#122316] border border-[#234b2a] text-[#8fc0a9] px-2 py-0.5 rounded">
+              BioCLIP 2
+            </span>
+          </div>
+
+          {/* Camera Flip Button */}
+          <button
+            onClick={handleFlipCamera}
+            aria-label="Flip camera"
+            className="w-10 h-10 rounded-xl bg-[#122316] border border-[#234b2a] flex items-center justify-center text-[#8fc0a9] hover:bg-[#1b3821] active:scale-95 transition-all"
+            title="Switch front / rear camera"
+          >
+            <span className="material-symbols-outlined text-2xl">flip_camera_ios</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Slide-out Secondary Menu Drawer */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex"
+          onClick={() => setMenuOpen(false)}
+        >
+          <div
+            className="w-72 max-w-[80vw] bg-[#0c180e] border-r border-[#1b3821] h-full p-5 flex flex-col justify-between shadow-2xl animate-slideRight"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-6">
+              <div className="flex items-center justify-between pb-3 border-b border-[#1b3821]">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#8fc0a9]">eco</span>
+                  <span className="font-serif font-bold text-[#f4fff4] text-base">WildLens AI</span>
+                </div>
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  className="w-8 h-8 rounded-lg text-[#8fc0a9] hover:bg-[#122316] flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <nav className="flex flex-col gap-2 text-sm font-medium">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setStep('camera');
+                  }}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-[#1b3821] text-[#f4fff4] text-left font-bold"
+                >
+                  <span className="material-symbols-outlined text-[#8fc0a9]">photo_camera</span>
+                  <span>Field Mode (Camera)</span>
+                </button>
+
+                <Link
+                  href="/journal"
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#122316] text-[#b3ceb8] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#8fc0a9]">menu_book</span>
+                  <span>Field Journal</span>
+                </Link>
+
+                <Link
+                  href="/missions"
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#122316] text-[#b3ceb8] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#8fc0a9]">explore</span>
+                  <span>Field Missions</span>
+                </Link>
+
+                <Link
+                  href="/identify"
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#122316] text-[#b3ceb8] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#8fc0a9]">center_focus_strong</span>
+                  <span>Optical Loupe Dossier</span>
+                </Link>
+
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#122316] text-[#b3ceb8] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#8fc0a9]">settings</span>
+                  <span>Telemetry & Settings</span>
+                </Link>
+              </nav>
+            </div>
+
+            <div className="pt-4 border-t border-[#1b3821] text-xs text-[#526a56] space-y-1">
+              <div>Touch Grass Edition · 100% Offline</div>
+              <div>Single BioCLIP 2 Vision Engine</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Center Viewfinder / Fallback View */}
+      <main className="flex-1 relative flex items-center justify-center overflow-hidden">
+        {/* Live Video Camera Stream */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+            cameraActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        />
+
+        {/* Viewfinder Reticle Overlay */}
+        {cameraActive && (
+          <div className="relative z-10 pointer-events-none w-64 h-64 sm:w-72 sm:h-72 border-2 border-[#8fc0a9]/40 rounded-3xl flex items-center justify-center">
+            <div className="w-4 h-4 border-t-2 border-l-2 border-[#8fc0a9] absolute top-2 left-2" />
+            <div className="w-4 h-4 border-t-2 border-r-2 border-[#8fc0a9] absolute top-2 right-2" />
+            <div className="w-4 h-4 border-b-2 border-l-2 border-[#8fc0a9] absolute bottom-2 left-2" />
+            <div className="w-4 h-4 border-b-2 border-r-2 border-[#8fc0a9] absolute bottom-2 right-2" />
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#8fc0a9]/70 bg-black/40 px-2 py-0.5 rounded">
+              Align Specimen
+            </span>
+          </div>
+        )}
+
+        {/* Fallback Screen when Camera is inactive / denied */}
+        {!cameraActive && (
+          <div className="relative z-10 max-w-sm mx-auto p-6 text-center space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-[#122316] border border-[#234b2a] flex items-center justify-center text-[#8fc0a9]">
+              <span className="material-symbols-outlined text-3xl">photo_camera</span>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-serif font-bold text-[#f4fff4]">
+                Outdoor Field Camera
+              </h3>
+              <p className="text-xs text-[#8fc0a9] leading-relaxed">
+                {cameraError || 'Allow camera permissions or choose a photo below for zero-cloud identification.'}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Step 1 */}
-              <div className="bg-surface-container-lowest rounded-xl p-6 plate-border shadow-sm flex flex-col items-start text-left">
-                <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-serif font-bold text-lg mb-4">
-                  1
-                </div>
-                <h3 className="font-headline-sm text-xl font-serif text-primary font-semibold">
-                  Optical Specimen Capture
-                </h3>
-                <p className="font-body-sm text-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Snap or upload a specimen image. Your camera frame is evaluated immediately in temporary browser memory with zero network uplink.
-                </p>
-              </div>
-
-              {/* Step 2 */}
-              <div className="bg-surface-container-lowest rounded-xl p-6 plate-border shadow-sm flex flex-col items-start text-left">
-                <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-serif font-bold text-lg mb-4">
-                  2
-                </div>
-                <h3 className="font-headline-sm text-xl font-serif text-primary font-semibold">
-                  On-Device BioCLIP AI
-                </h3>
-                <p className="font-body-sm text-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Our open-weight Vision Transformer compares morphological features against 10,240 biological taxa grounded in the Tree of Life.
-                </p>
-              </div>
-
-              {/* Step 3 */}
-              <div className="bg-surface-container-lowest rounded-xl p-6 plate-border shadow-sm flex flex-col items-start text-left">
-                <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-serif font-bold text-lg mb-4">
-                  3
-                </div>
-                <h3 className="font-headline-sm text-xl font-serif text-primary font-semibold">
-                  Look Up & Explore
-                </h3>
-                <p className="font-body-sm text-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Review observable traits, dim your screen for two minutes, and return to observing the organism with your own eyes outdoors.
-                </p>
-              </div>
-            </div>
+            <button
+              onClick={() => startCamera(facingMode)}
+              className="px-4 py-2.5 rounded-xl bg-[#2e6b47] hover:bg-[#398257] text-[#f4fff4] font-bold text-xs border border-[#439665]"
+            >
+              Retry Camera
+            </button>
           </div>
-        </section>
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="w-full bg-surface-container-low border-t border-[#e5e0d3] py-8 text-on-surface-variant text-sm">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-10 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-serif font-bold text-primary">WildLens AI</span>
-            <span>·</span>
-            <span className="text-xs">Hacktoberfest Open-Source AI Challenge Week 1: Touch Grass</span>
+      {/* Bottom Controls Bar (Glove-Friendly) */}
+      <footer className="relative z-20 w-full bg-[#08120a]/90 backdrop-blur-md border-t border-[#1b3821] p-4 sm:p-5">
+        <div className="max-w-xl mx-auto flex flex-col gap-3">
+          {/* Quick Preset Specimens for Offline Testing */}
+          <div className="flex items-center justify-center gap-2 overflow-x-auto pb-1 text-xs">
+            <span className="text-[10px] uppercase tracking-wider text-[#526a56] font-bold flex-shrink-0">
+              Test Presets:
+            </span>
+            {PRESET_TEST_SPECIMENS.slice(0, 3).map((specimen, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSampleSelect(specimen)}
+                className="px-2.5 py-1 rounded-lg bg-[#122316] hover:bg-[#1c3822] text-[#8fc0a9] border border-[#234b2a] text-[11px] whitespace-nowrap"
+              >
+                {specimen.name.split(' ')[0]}
+              </button>
+            ))}
           </div>
 
-          <div className="flex items-center gap-6 text-xs font-semibold">
-            <Link href="/about" className="hover:text-primary transition-colors">
-              BioCLIP Architecture
-            </Link>
-            <Link href="/journal" className="hover:text-primary transition-colors">
-              IndexedDB Journal
-            </Link>
-            <Link href="/settings" className="hover:text-primary transition-colors">
-              Engine Telemetry
+          {/* Main Glove-Friendly Action Row */}
+          <div className="flex items-center justify-around gap-4 pt-1">
+            {/* Upload File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-14 h-14 rounded-2xl bg-[#122316] border border-[#234b2a] text-[#8fc0a9] hover:bg-[#1b3821] active:scale-95 flex items-center justify-center transition-all"
+              title="Upload photo from device"
+              aria-label="Upload photo"
+            >
+              <span className="material-symbols-outlined text-2xl">photo_library</span>
+            </button>
+
+            {/* Giant Shutter Button (>= 76px, high-contrast, glove-friendly) */}
+            <button
+              onClick={handleCapture}
+              disabled={!cameraActive}
+              className={`w-20 h-20 sm:w-22 sm:h-22 rounded-full border-4 flex items-center justify-center transition-all ${
+                cameraActive
+                  ? 'border-[#8fc0a9] bg-[#2e6b47] hover:bg-[#388156] active:scale-95 shadow-xl cursor-pointer'
+                  : 'border-[#234b2a] bg-[#122316] opacity-50 cursor-not-allowed'
+              }`}
+              aria-label="Capture specimen image"
+            >
+              <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center text-[#1b4332]">
+                <span className="material-symbols-outlined text-3xl">center_focus_strong</span>
+              </div>
+            </button>
+
+            {/* Settings Quick Access */}
+            <Link
+              href="/settings"
+              className="w-14 h-14 rounded-2xl bg-[#122316] border border-[#234b2a] text-[#8fc0a9] hover:bg-[#1b3821] active:scale-95 flex items-center justify-center transition-all"
+              title="Settings & Telemetry"
+              aria-label="Settings"
+            >
+              <span className="material-symbols-outlined text-2xl">settings</span>
             </Link>
           </div>
         </div>
       </footer>
-
-      <BottomNav />
     </div>
   );
 }

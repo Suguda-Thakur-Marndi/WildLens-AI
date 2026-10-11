@@ -115,7 +115,7 @@ export default function Header() {
             type="button"
             onClick={() => setStatusModalOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-surface-container-low border border-[#e5e0d3] text-primary hover:bg-surface-container transition-colors min-h-[36px] sm:min-h-[40px] cursor-pointer"
-            title="BioCLIP-2 & Qwen3 AI engine status, hardware metrics & telemetry"
+            title="BioCLIP-2 AI engine status, hardware metrics & telemetry"
             aria-label="View AI engine telemetry"
           >
             <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${statusDotClass}`}></span>

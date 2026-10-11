@@ -136,13 +136,13 @@ export default function SettingsPage() {
 
               <div className="p-3 rounded-lg bg-surface-container-low border border-[#e5e0d3] flex flex-col">
                 <span className="text-on-surface-variant font-semibold uppercase text-[10px]">
-                  Language Model (Qwen)
+                  Curated Knowledge Base
                 </span>
                 <span className="font-medium text-primary mt-0.5">
-                  {telemetry?.llm_model_id || 'Qwen/Qwen3-8B'} (4-bit NF4)
+                  taxonomy_kb.py (Deterministic)
                 </span>
                 <span className="text-[10px] text-secondary mt-0.5">
-                  License: {telemetry?.llm_model_license || 'Apache-2.0'} · Natural History Layer
+                  Zero LLM · Mandatory Mushroom Guard
                 </span>
               </div>
 

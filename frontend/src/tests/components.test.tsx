@@ -49,7 +49,7 @@ describe('WildLens AI Frontend Core Logic', () => {
     expect(completed).not.toContain(missionId);
   });
 
-  it('validates dual-model telemetry fields for BioCLIP-2 and Qwen3', () => {
+  it('validates single-model telemetry fields for BioCLIP-2', () => {
     const telemetry = {
       status: 'ready' as const,
       model_name: 'imageomics/bioclip-2',
@@ -61,16 +61,11 @@ describe('WildLens AI Frontend Core Logic', () => {
       vision_model_id: 'imageomics/bioclip-2',
       vision_model_license: 'MIT',
       vision_device: 'cpu',
-      llm_model_id: 'Qwen/Qwen3-8B',
-      llm_model_license: 'Apache-2.0',
-      llm_status: 'ready',
-      llm_device: 'cpu',
     };
 
     expect(telemetry.vision_model_id).toBe('imageomics/bioclip-2');
     expect(telemetry.vision_model_license).toBe('MIT');
-    expect(telemetry.llm_model_id).toBe('Qwen/Qwen3-8B');
-    expect(telemetry.llm_model_license).toBe('Apache-2.0');
+    expect(telemetry.device).toBe('cpu');
     expect(telemetry.offline_capable).toBe(true);
   });
 });

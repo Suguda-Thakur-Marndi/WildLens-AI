@@ -39,11 +39,6 @@ export async function fetchModelStatus(): Promise<ModelTelemetry> {
       vision_model_license: data.vision_model_license || data.model_license || 'MIT',
       vision_device: data.vision_device || data.device || 'cpu',
       vision_memory_mb: data.vision_memory_mb ?? data.memory_usage_mb ?? null,
-      llm_model_id: data.llm_model_id || 'Qwen/Qwen3-8B',
-      llm_model_license: data.llm_model_license || 'Apache-2.0',
-      llm_status: data.llm_status || 'ready',
-      llm_device: data.llm_device || 'cpu',
-      llm_memory_mb: data.llm_memory_mb ?? null,
     };
   } catch (err) {
     console.warn('API model status unreachable, using local on-device state', err);
@@ -61,11 +56,6 @@ export async function fetchModelStatus(): Promise<ModelTelemetry> {
       vision_model_license: 'MIT',
       vision_device: 'cpu',
       vision_memory_mb: null,
-      llm_model_id: 'Qwen/Qwen3-8B',
-      llm_model_license: 'Apache-2.0',
-      llm_status: 'ready',
-      llm_device: 'cpu',
-      llm_memory_mb: null,
     };
   }
 }

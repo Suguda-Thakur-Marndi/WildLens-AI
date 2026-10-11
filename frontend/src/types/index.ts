@@ -99,12 +99,6 @@ export interface ModelTelemetry {
   vision_model_license?: string;
   vision_device?: string;
   vision_memory_mb?: number | null;
-  // Local Language Layer (Qwen3-8B)
-  llm_model_id?: string;
-  llm_model_license?: string;
-  llm_status?: string | null;
-  llm_device?: string | null;
-  llm_memory_mb?: number | null;
 }
 
 // Backward compatibility types
@@ -157,11 +151,6 @@ export interface ModelStatusResponse {
   vision_model_license?: string;
   vision_device?: string;
   vision_memory_mb?: number | null;
-  llm_model_id?: string;
-  llm_model_license?: string;
-  llm_status?: string | null;
-  llm_device?: string | null;
-  llm_memory_mb?: number | null;
 }
 
 export interface HealthResponse {
