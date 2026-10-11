@@ -1,10 +1,16 @@
-name: CI
+name: CI / Deploy
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   backend:
@@ -57,8 +63,49 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Run TypeScript typecheck
-        run: npm run build
-
       - name: Run Vitest Unit Tests
         run: npm run test
+
+      - name: Build Next.js static export
+        env:
+          BASE_PATH: /WildLens-AI
+          NEXT_PUBLIC_BASE_PATH: /WildLens-AI
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '' }}
+        run: npm run build
+
+      - name: Verify generated entry point
+        run: |
+          if [ ! -f out/index.html ]; then
+            echo "::error::Generated entry point out/index.html not found!"
+            exit 1
+          fi
+          if [ ! -f out/404.html ]; then
+            echo "::error::Generated fallback out/404.html not found!"
+            exit 1
+          fi
+          echo "Verified entry point out/index.html exists ($(wc -c < out/index.html) bytes)."
+          # Create .nojekyll so GitHub Pages does not ignore _next assets
+          touch out/.nojekyll
+
+      - name: Upload GitHub Pages artifact
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [backend, frontend]
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

@@ -1,5 +1,13 @@
 import { Observation, FieldMission } from '@/src/types';
 
+export const resolveAssetUrl = (path: string): string => {
+  if (!path || !path.startsWith('/') || path.startsWith('//') || path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+  return basePath ? `${basePath}${path}` : path;
+};
+
 export const SAMPLE_OBSERVATIONS: Observation[] = [
   {
     id: 'obs-001',
@@ -167,7 +175,7 @@ export const FIELD_MISSIONS: FieldMission[] = [
     difficulty: 'Easy',
     description: 'Collect or observe two leaves from different plant species growing within arm’s reach. Compare their margins, venation patterns, petiole attachment, and tactile surface coatings.',
     quote: '“Geometry is the silent language written across every leaf blade.”',
-    image_url: '/sample_images/white_oak_leaf.jpg',
+    image_url: resolveAssetUrl('/sample_images/white_oak_leaf.jpg'),
     instructions: [
       'Select one sunny canopy leaf and one shaded understory leaf.',
       'Trace the main veins with your fingertip from petiole to margin.',
@@ -211,7 +219,7 @@ export const FIELD_MISSIONS: FieldMission[] = [
     difficulty: 'Moderate',
     description: 'Observe blooming wildflowers from at least 1 meter distance. Track a solitary bee, hoverfly, or butterfly as it visits blossoms. Record visitation duration and nectar-feeding stance.',
     quote: '“Every blossom is an open landing strip engineered over 100 million years.”',
-    image_url: '/sample_images/monarch_butterfly.jpg',
+    image_url: resolveAssetUrl('/sample_images/monarch_butterfly.jpg'),
     instructions: [
       'Locate a patch of open blossoms receiving direct morning sunlight.',
       'Stand still so your shadow does not fall across the target flowers.',
@@ -262,7 +270,7 @@ export const PRESET_TEST_SPECIMENS = [
   {
     name: 'Monarch Butterfly',
     file: 'monarch_butterfly.jpg',
-    image_url: '/sample_images/monarch_butterfly.jpg',
+    image_url: resolveAssetUrl('/sample_images/monarch_butterfly.jpg'),
     candidate: {
       common_name: 'Monarch Butterfly',
       scientific_name: 'Danaus plexippus',
@@ -288,7 +296,7 @@ export const PRESET_TEST_SPECIMENS = [
   {
     name: 'American Robin',
     file: 'american_robin.jpg',
-    image_url: '/sample_images/american_robin.jpg',
+    image_url: resolveAssetUrl('/sample_images/american_robin.jpg'),
     candidate: {
       common_name: 'American Robin',
       scientific_name: 'Turdus migratorius',
@@ -314,7 +322,7 @@ export const PRESET_TEST_SPECIMENS = [
   {
     name: 'White Oak Leaf',
     file: 'white_oak_leaf.jpg',
-    image_url: '/sample_images/white_oak_leaf.jpg',
+    image_url: resolveAssetUrl('/sample_images/white_oak_leaf.jpg'),
     candidate: {
       common_name: 'White Oak',
       scientific_name: 'Quercus alba',

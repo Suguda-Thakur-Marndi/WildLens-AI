@@ -106,11 +106,19 @@ export default function SystemStatusModal({
             <div className="flex items-center gap-2.5">
               <span
                 className={`w-3 h-3 rounded-full ${
-                  isReady ? 'bg-[#2e6b47] animate-pulse' : 'bg-amber-500'
+                  isReady
+                    ? 'bg-[#2e6b47] animate-pulse'
+                    : telemetry?.status === 'loading'
+                    ? 'bg-amber-500'
+                    : 'bg-red-500'
                 }`}
               />
               <span className="font-semibold text-[#1b4332]">
-                {isReady ? '100% Offline Edge Verified · Single BioCLIP 2 Model' : 'AI Engine Initializing...'}
+                {isReady
+                  ? 'FastAPI Backend Connected · Single BioCLIP-2 Model'
+                  : telemetry?.status === 'loading'
+                  ? 'AI Engine Initializing...'
+                  : 'FastAPI Backend Disconnected · Live Inference Unavailable'}
               </span>
             </div>
             <button

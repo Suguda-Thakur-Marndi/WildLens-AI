@@ -13,9 +13,11 @@ __pycache__/
 # Frontend dependencies & build artifacts
 frontend/node_modules/
 frontend/dist/
+frontend/out/
 frontend/.vite/
 frontend/.next/
 .next/
+out/
 node_modules/
 dist/
 *.tsbuildinfo

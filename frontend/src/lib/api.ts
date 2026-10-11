@@ -1,17 +1,45 @@
 import { IdentificationResult, ModelTelemetry, FieldMission } from '@/src/types';
 import { FIELD_MISSIONS, PRESET_TEST_SPECIMENS } from './sampleData';
 
-function getApiUrl(subpath: string): string {
-  const cleanPath = subpath.startsWith('/') ? subpath.slice(1) : subpath;
-  // If running on the server (runtime function / SSR), resolve using the injected BACKEND_URL service binding
-  if (typeof window === 'undefined' && process.env.BACKEND_URL) {
-    const base = process.env.BACKEND_URL.endsWith('/')
-      ? process.env.BACKEND_URL
-      : `${process.env.BACKEND_URL}/`;
-    return new URL(cleanPath, base).toString();
+export function getApiBaseUrl(): string {
+  // 1. Configured client-side public API URL (production or custom endpoint)
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (configuredUrl && configuredUrl.trim()) {
+    return configuredUrl.trim().replace(/\/+$/, '');
   }
-  // When running in the browser, route via the relative path
-  return `/${cleanPath}`;
+
+  // 2. Server-side environment during SSR or build
+  if (typeof window === 'undefined' && process.env.BACKEND_URL) {
+    return process.env.BACKEND_URL.trim().replace(/\/+$/, '');
+  }
+
+  // 3. Browser environment check
+  if (typeof window !== 'undefined') {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+
+    // Only fallback to loopback in local development
+    if (isLocalhost) {
+      return 'http://127.0.0.1:8000';
+    }
+  }
+
+  return '';
+}
+
+export function getApiUrl(subpath: string): string {
+  const cleanPath = subpath.startsWith('/') ? subpath.slice(1) : subpath;
+  const baseUrl = getApiBaseUrl();
+
+  if (baseUrl) {
+    return `${baseUrl}/${cleanPath}`;
+  }
+
+  // In production static hosting (e.g. GitHub Pages) without an explicit API base URL,
+  // do not use localhost. Respect basePath if configured.
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+  return basePath ? `${basePath}/${cleanPath}` : `/${cleanPath}`;
 }
 
 export async function fetchModelStatus(): Promise<ModelTelemetry> {
@@ -41,20 +69,23 @@ export async function fetchModelStatus(): Promise<ModelTelemetry> {
       vision_memory_mb: data.vision_memory_mb ?? data.memory_usage_mb ?? null,
     };
   } catch (err) {
-    console.warn('API model status unreachable, using local on-device state', err);
+    console.warn('API model status unreachable:', err);
+    const isLocal = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
     return {
-      status: 'ready',
-      model_name: 'imageomics/bioclip-2 (Edge Engine)',
+      status: 'unavailable',
+      model_name: 'imageomics/bioclip-2 (Backend Disconnected)',
       model_revision: '2957b322090f9cb17ae72c71981c7218a28d81e0',
       model_license: 'MIT',
-      device: 'CPU / WebGPU Neural Engine',
+      device: isLocal ? 'FastAPI Backend Offline' : 'External FastAPI Backend Required',
       cache_directory: 'models/bioclip_cache',
       supported_taxa_count: 36,
-      offline_capable: true,
+      offline_capable: false,
       memory_usage_mb: null,
       vision_model_id: 'imageomics/bioclip-2',
       vision_model_license: 'MIT',
-      vision_device: 'cpu',
+      vision_device: 'disconnected',
       vision_memory_mb: null,
     };
   }
@@ -184,11 +215,13 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
         const errJson = await res.json();
         errorDetail = errJson.detail || errJson.message || errorDetail;
       } catch {}
-      throw new Error(errorDetail);
+      const httpError = new Error(errorDetail);
+      (httpError as any).isHttpError = true;
+      throw httpError;
     }
   } catch (err: any) {
-    // If it is an explicit error from the server (e.g. invalid format or size), re-throw immediately
-    if (err.message && !err.message.includes('fetch')) {
+    // If it is an explicit HTTP error from the server (e.g. invalid format or size), re-throw immediately
+    if (err.isHttpError) {
       throw err;
     }
 
@@ -210,7 +243,7 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
           diagnostic_traits: [lk.difference]
         })),
         latency_ms: elapsed || 380,
-        model_name: 'imageomics/bioclip-2 (Edge Inference)',
+        model_name: 'imageomics/bioclip-2 (Preset Specimen)',
         similarity_score: matchingPreset.candidate.confidence,
         confidence_status: matchingPreset.candidate.confidence > 0.8 ? 'confident' : 'moderate',
         candidate_count: 37,
@@ -227,13 +260,26 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
     }
 
     // Never fabricate a prediction for unknown images when the API is down
-    const targetUrl = typeof window === 'undefined' && process.env.BACKEND_URL
-      ? process.env.BACKEND_URL
-      : 'http://127.0.0.1:8000';
-    throw new Error(
-      `Local BioCLIP inference server unreachable (${err.message || 'connection failed'}). ` +
-      `Ensure the FastAPI backend is running on ${targetUrl}.`
-    );
+    const baseUrl = getApiBaseUrl();
+    const isLocal = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (baseUrl) {
+      throw new Error(
+        `FastAPI BioCLIP inference backend unreachable at ${baseUrl} (${err.message || 'connection failed'}). ` +
+        `Ensure the backend service is running and accessible.`
+      );
+    } else if (isLocal) {
+      throw new Error(
+        `Local BioCLIP inference backend unreachable (${err.message || 'connection failed'}). ` +
+        `Ensure the FastAPI backend is running on http://127.0.0.1:8000.`
+      );
+    } else {
+      throw new Error(
+        `BioCLIP inference backend not configured (${err.message || 'connection failed'}). ` +
+        `GitHub Pages hosts the static frontend only. BioCLIP-2 vision inference requires a separate FastAPI backend configured via NEXT_PUBLIC_API_URL.`
+      );
+    }
   }
 }
 

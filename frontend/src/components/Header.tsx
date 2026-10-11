@@ -51,10 +51,10 @@ export default function Header() {
 
   const statusLabel =
     modelTelemetry?.status === 'ready'
-      ? 'Local AI · Ready'
+      ? 'Backend AI · Ready'
       : modelTelemetry?.status === 'loading'
-      ? 'Local AI · Loading'
-      : 'Local AI · Offline';
+      ? 'Backend AI · Loading'
+      : 'Backend AI · Offline';
 
   const statusDotClass =
     modelTelemetry?.status === 'ready'
