@@ -26,7 +26,10 @@ const CameraModal = dynamic(() => import('@/src/components/CameraModal'), {
   ssr: false,
 });
 
+import { useServiceConnectivity } from '@/src/lib/connectivity';
+
 export default function IdentifyPage() {
+  const connectivity = useServiceConnectivity();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,14 +113,32 @@ export default function IdentifyPage() {
           <div className="max-w-[1000px] mx-auto w-full px-4 md:px-6 lg:px-8 py-8 flex flex-col items-center">
             {/* Page Header */}
             <div className="text-center max-w-xl mb-6">
-              <span className="font-label-sm text-xs text-secondary uppercase tracking-widest block mb-1 font-semibold">
-                Autonomous Optical Loupe
-              </span>
+              <div className="flex items-center justify-center gap-2 mb-1.5 flex-wrap">
+                <span className="font-label-sm text-xs text-secondary uppercase tracking-widest font-semibold">
+                  Autonomous Optical Loupe
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    connectivity.canPerformOfflineInference
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : connectivity.backendConnected
+                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                      : 'bg-zinc-100 text-zinc-700 border-zinc-200'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${connectivity.badgeDotClass}`} />
+                  <span>{connectivity.badgeText}</span>
+                </span>
+              </div>
               <h1 className="font-headline-lg text-3xl sm:text-4xl font-serif text-primary font-medium tracking-tight">
                 Identify Wild Specimen
               </h1>
               <p className="font-body-md text-sm sm:text-base text-on-surface-variant mt-2 leading-relaxed">
-                Photograph any flower, leaf, fungus, or creature. Evaluated on-device via BioCLIP with 100% privacy and zero cell service required.
+                {connectivity.canPerformOfflineInference
+                  ? 'Local BioCLIP-2 vision engine active on 127.0.0.1. Optical inference operates 100% on-device with zero cell service required.'
+                  : connectivity.backendConnected
+                  ? 'Connected to FastAPI BioCLIP-2 backend service for real-time biological classification.'
+                  : 'Inference backend is offline. Preset test specimens below are bundled for offline evaluation, and your saved journal remains 100% accessible.'}
               </p>
             </div>
 
@@ -217,7 +238,13 @@ export default function IdentifyPage() {
                         <span className="material-symbols-outlined text-[20px]">
                           psychology
                         </span>
-                        <span>Identify Specimen with Local AI</span>
+                        <span>
+                          {connectivity.canPerformOfflineInference
+                            ? 'Classify with Local AI (Offline Ready)'
+                            : connectivity.backendConnected
+                            ? 'Classify with Remote BioCLIP'
+                            : 'Evaluate with Bundled Offline Model'}
+                        </span>
                       </>
                     )}
                   </button>

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.api.routes import router
-from app.core.config import settings
+from app.core.config import settings, validate_startup_configuration
 from app.core.exceptions import register_exception_handlers
 from app.services.bioclip_service import BioClipService
 
@@ -21,7 +21,7 @@ logger = logging.getLogger("wildlens")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("WildLens AI Backend initializing...")
-    logger.info(f"Model: {settings.model_identifier} (Cache: {settings.model_cache_dir})")
+    validate_startup_configuration()
 
     # Decouple backend server readiness (<100ms) from heavy PyTorch model initialization.
     # Enables immediate health and status checks while BioCLIP-2 initializes in the background.

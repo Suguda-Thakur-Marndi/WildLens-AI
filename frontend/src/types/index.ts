@@ -55,6 +55,7 @@ export interface Observation {
   photo_url: string;
   date: string;
   timestamp: number;
+  last_modified?: number;
   location: string;
   certainty: number;
   status: 'User verified' | 'Unverified';
@@ -159,5 +160,46 @@ export interface HealthResponse {
   model_status: string;
   device: string;
   system_memory_free_mb?: number | null;
+  gemini_status?: string;
+  gemini_configured?: boolean;
+  offline_mode?: boolean;
+  catalog_taxa_count?: number;
+}
+
+export interface GeminiStatusResponse {
+  status: 'ready' | 'unconfigured' | 'unavailable' | 'offline';
+  model: string;
+  configured: boolean;
+  online: boolean;
+  message?: string;
+}
+
+export interface GeminiExplainResponse {
+  specimen_name: string;
+  scientific_name: string;
+  summary: string;
+  ecological_niche: string;
+  seasonal_behavior: string;
+  lookalike_differentiators: string[];
+  indigenous_or_cultural_context?: string;
+  safety_warnings: string[];
+  is_fungi: boolean;
+  provider: string;
+  generated_at: string;
+}
+
+export interface GeminiAskResponse {
+  question: string;
+  specimen_name?: string;
+  answer: string;
+  provider: string;
+  answered_at: string;
+}
+
+export interface JournalSyncResponse {
+  status: string;
+  synced_count: number;
+  server_observations: Observation[];
+  message: string;
 }
 

@@ -6,13 +6,27 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from app.core.config import settings
 from app.core.exceptions import ImageValidationError
 from app.repositories.taxonomy_repository import default_taxonomy_repository
+from app.schemas.gemini import (
+    GeminiAskRequest,
+    GeminiAskResponse,
+    GeminiExplainRequest,
+    GeminiExplainResponse,
+    GeminiStatusResponse,
+)
 from app.schemas.identification import (
     HealthResponse,
     IdentificationResponse,
     ModelStatusResponse,
     OutdoorMissionSchema,
 )
+from app.schemas.journal import (
+    JournalObservation,
+    JournalSyncRequest,
+    JournalSyncResponse,
+)
 from app.services.bioclip_service import BioClipService
+from app.services.gemini_service import gemini_service
+from app.services.journal_service import journal_sync_service
 
 router = APIRouter()
 
@@ -104,12 +118,22 @@ def get_health() -> HealthResponse:
     except (psutil.Error, OSError, AttributeError):
         mem_free = None
 
+    try:
+        gemini_is_cfg = bool(gemini_service.is_configured)
+    except Exception:
+        gemini_is_cfg = False
+    gemini_stat = "ready" if gemini_is_cfg else "unconfigured"
+
     return HealthResponse(
         status="healthy",
         version=settings.version,
         model_status=service.status,
         device=service.device,
-        system_memory_free_mb=mem_free
+        system_memory_free_mb=mem_free,
+        gemini_status=gemini_stat,
+        gemini_configured=gemini_is_cfg,
+        offline_mode=False,
+        catalog_taxa_count=len(default_taxonomy_repository.list_all()),
     )
 
 @router.get("/model/status", response_model=ModelStatusResponse)
@@ -173,3 +197,51 @@ def get_missions() -> List[Dict[str, Any]]:
 @router.get("/species/")
 def get_species_reference() -> List[Dict[str, Any]]:
     return default_taxonomy_repository.list_all()
+
+# --- Gemini AI Naturalist Endpoints ---
+
+@router.get("/gemini/status", response_model=GeminiStatusResponse)
+@router.get("/gemini/status/", response_model=GeminiStatusResponse)
+async def get_gemini_status() -> GeminiStatusResponse:
+    """Returns Gemini service connectivity and configuration status without exposing the API key."""
+    return await gemini_service.get_status()
+
+
+@router.post("/gemini/explain", response_model=GeminiExplainResponse)
+@router.post("/gemini/explain/", response_model=GeminiExplainResponse)
+async def explain_species_with_gemini(req: GeminiExplainRequest) -> GeminiExplainResponse:
+    """Provides educational natural history insights for an identified specimen."""
+    return await gemini_service.explain_species(
+        species_name=req.get_name(),
+        scientific_name=req.scientific_name or "",
+        observation_context=req.observation_context or "",
+        image_base64=req.image_base64,
+        user_prompt=req.user_prompt,
+    )
+
+
+@router.post("/gemini/ask", response_model=GeminiAskResponse)
+@router.post("/gemini/ask/", response_model=GeminiAskResponse)
+async def ask_naturalist_with_gemini(req: GeminiAskRequest) -> GeminiAskResponse:
+    """Naturalist Q&A for exploring nature, taxonomy, and outdoor observation questions."""
+    return await gemini_service.ask_naturalist(
+        question=req.question,
+        species_context=req.get_context(),
+        image_base64=req.image_base64,
+    )
+
+# --- Journal Synchronization Endpoints ---
+
+@router.post("/journal/sync", response_model=JournalSyncResponse)
+@router.post("/journal/sync/", response_model=JournalSyncResponse)
+def sync_journal_observations(req: JournalSyncRequest) -> JournalSyncResponse:
+    """Synchronizes client observations with backend store using last_modified conflict resolution."""
+    return journal_sync_service.sync_observations(req.observations)
+
+
+@router.get("/journal/sync", response_model=List[JournalObservation])
+@router.get("/journal/sync/", response_model=List[JournalObservation])
+def get_synced_journal_observations() -> List[JournalObservation]:
+    """Retrieves all synchronized journal observations from backend storage."""
+    return journal_sync_service.get_all()
+

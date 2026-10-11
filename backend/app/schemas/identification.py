@@ -83,6 +83,10 @@ class HealthResponse(BaseModel):
     model_status: str
     device: str
     system_memory_free_mb: Optional[float] = None
+    gemini_status: str = "unconfigured"
+    gemini_configured: bool = False
+    offline_mode: bool = False
+    catalog_taxa_count: int = 36
 
 
 class OutdoorMissionSchema(BaseModel):

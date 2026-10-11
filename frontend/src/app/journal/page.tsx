@@ -7,7 +7,10 @@ import BottomNav from '@/src/components/BottomNav';
 import { journalDb } from '@/src/lib/journalDb';
 import { Observation } from '@/src/types';
 
+import { useServiceConnectivity } from '@/src/lib/connectivity';
+
 export default function JournalPage() {
+  const connectivity = useServiceConnectivity();
   const [observations, setObservations] = useState<Observation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,6 +19,10 @@ export default function JournalPage() {
   const [editNotes, setEditNotes] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const pendingCount = typeof window !== 'undefined' ? journalDb.getPendingSyncIds().length : 0;
 
   const loadObservations = async () => {
     setLoading(true);
@@ -31,7 +38,29 @@ export default function JournalPage() {
 
   useEffect(() => {
     loadObservations();
+
+    const handleSynced = () => {
+      loadObservations();
+    };
+
+    window.addEventListener('wildlens:journal_synced', handleSynced);
+    return () => window.removeEventListener('wildlens:journal_synced', handleSynced);
   }, []);
+
+  const handleSyncWithServer = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await journalDb.syncWithServer();
+      setSyncNotice(res.message);
+      await loadObservations();
+      setTimeout(() => setSyncNotice(null), 5000);
+    } catch (err: any) {
+      setSyncNotice(err.message || 'Synchronization failed.');
+      setTimeout(() => setSyncNotice(null), 5000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleOpenDetail = (obs: Observation) => {
     setSelectedObs(obs);
@@ -100,18 +129,55 @@ export default function JournalPage() {
           {/* Section Header & Export Bar */}
           <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-4">
             <div>
-              <span className="font-label-sm text-xs text-secondary uppercase tracking-widest block mb-1 font-semibold">
-                Autonomous On-Device Storage
-              </span>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-label-sm text-xs text-secondary uppercase tracking-widest font-semibold">
+                  Autonomous On-Device Storage
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                    connectivity.backendConnected
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      connectivity.backendConnected ? 'bg-emerald-600' : 'bg-zinc-400'
+                    }`}
+                  />
+                  <span>
+                    {connectivity.backendConnected
+                      ? 'Server Sync Ready'
+                      : 'Offline IndexedDB'}
+                  </span>
+                </span>
+                {pendingCount > 0 && (
+                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-amber-300">
+                    {pendingCount} unsynced
+                  </span>
+                )}
+              </div>
               <h1 className="font-headline-lg text-3xl sm:text-4xl font-serif text-primary font-medium tracking-tight">
                 My Field Journal
               </h1>
               <p className="font-body-md text-sm text-on-surface-variant mt-1">
-                IndexedDB botanical specimen logs stored exclusively in local browser sandbox.
+                IndexedDB botanical specimen logs stored persistently in your local browser sandbox.
               </p>
             </div>
 
             <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <button
+                onClick={handleSyncWithServer}
+                disabled={isSyncing}
+                className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-surface-container plate-border text-primary font-label-md text-xs font-semibold hover:bg-surface-container-high transition-colors flex items-center justify-center gap-1.5 shadow-sm min-h-[40px] disabled:opacity-50"
+                title="Synchronize Field Journal with FastAPI server"
+              >
+                <span className={`material-symbols-outlined text-[16px] ${isSyncing ? 'animate-spin' : ''}`}>
+                  sync
+                </span>
+                <span>{isSyncing ? 'Syncing...' : 'Sync Journal'}</span>
+              </button>
+
               <button
                 onClick={handleExportAll}
                 className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-surface-container plate-border text-primary font-label-md text-xs font-semibold hover:bg-surface-container-high transition-colors flex items-center justify-center gap-1.5 shadow-sm min-h-[40px]"
@@ -130,7 +196,14 @@ export default function JournalPage() {
             </div>
           </div>
 
-          {/* Export Notification Notice */}
+          {/* Sync & Export Notification Notices */}
+          {syncNotice && (
+            <div className="mb-6 p-3 rounded-lg bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center gap-2 animate-fadeIn border border-emerald-300">
+              <span className="material-symbols-outlined text-[16px] text-emerald-700">sync</span>
+              <span>{syncNotice}</span>
+            </div>
+          )}
+
           {exportNotice && (
             <div className="mb-6 p-3 rounded-lg bg-secondary-container text-on-secondary-container text-xs font-semibold flex items-center gap-2 animate-fadeIn border border-secondary/30">
               <span className="material-symbols-outlined text-[16px]">check_circle</span>

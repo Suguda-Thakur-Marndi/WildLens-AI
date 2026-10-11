@@ -2,8 +2,15 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { IdentificationResult, Observation } from '@/src/types';
+import {
+  IdentificationResult,
+  Observation,
+  GeminiExplainResponse,
+  GeminiAskResponse,
+} from '@/src/types';
 import { journalDb } from '@/src/lib/journalDb';
+import { explainWithGemini, askGeminiNaturalist } from '@/src/lib/api';
+import { useServiceConnectivity } from '@/src/lib/connectivity';
 import MeditationOverlay from './MeditationOverlay';
 
 interface IdentificationResultsViewProps {
@@ -19,6 +26,19 @@ export default function IdentificationResultsView({
   const [meditationOpen, setMeditationOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
+
+  // Gemini Naturalist State & Privacy Consent
+  const connectivity = useServiceConnectivity();
+  const [includeImageConsent, setIncludeImageConsent] = useState(false);
+  const [geminiExplanation, setGeminiExplanation] = useState<GeminiExplainResponse | null>(null);
+  const [geminiLoading, setGeminiLoading] = useState(false);
+  const [geminiError, setGeminiError] = useState<string | null>(null);
+
+  // Naturalist Interactive Q&A State
+  const [userQuestion, setUserQuestion] = useState('');
+  const [qaHistory, setQaHistory] = useState<GeminiAskResponse[]>([]);
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaError, setQaError] = useState<string | null>(null);
 
   const { top_candidate, alternatives, latency_ms } = result;
 
@@ -80,6 +100,77 @@ export default function IdentificationResultsView({
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
+    }
+  };
+
+  const getBase64ImageIfConsented = async (): Promise<string | undefined> => {
+    if (!includeImageConsent || !result.image_url) return undefined;
+    try {
+      const res = await fetch(result.image_url);
+      const blob = await res.blob();
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const resStr = reader.result as string;
+          const commaIdx = resStr.indexOf(',');
+          resolve(commaIdx !== -1 ? resStr.slice(commaIdx + 1) : resStr);
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return undefined;
+    }
+  };
+
+  const handleAskGeminiExplanation = async () => {
+    setGeminiLoading(true);
+    setGeminiError(null);
+    try {
+      const imgBase64 = await getBase64ImageIfConsented();
+      const explanation = await explainWithGemini({
+        specimen_name: top_candidate.common_name,
+        scientific_name: top_candidate.scientific_name,
+        family: top_candidate.family,
+        kingdom: top_candidate.kingdom,
+        diagnostic_traits: top_candidate.diagnostic_traits,
+        confidence: top_candidate.confidence,
+        image_base64: imgBase64,
+      });
+      setGeminiExplanation(explanation);
+    } catch (err: any) {
+      setGeminiError(
+        err.userMessage || err.message || 'Gemini natural history explanation could not be retrieved.'
+      );
+    } finally {
+      setGeminiLoading(false);
+    }
+  };
+
+  const handleAskNaturalistQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userQuestion.trim()) return;
+    setQaLoading(true);
+    setQaError(null);
+    const qText = userQuestion.trim();
+    try {
+      const imgBase64 = await getBase64ImageIfConsented();
+      const answer = await askGeminiNaturalist({
+        question: qText,
+        specimen_name: top_candidate.common_name,
+        scientific_name: top_candidate.scientific_name,
+        family: top_candidate.family,
+        context: top_candidate.diagnostic_traits?.join(', '),
+        image_base64: imgBase64,
+      });
+      setQaHistory((prev) => [...prev, answer]);
+      setUserQuestion('');
+    } catch (err: any) {
+      setQaError(
+        err.userMessage || err.message || 'Naturalist Q&A failed to receive a response.'
+      );
+    } finally {
+      setQaLoading(false);
     }
   };
 
@@ -553,6 +644,259 @@ export default function IdentificationResultsView({
                 </div>
               </div>
             )}
+
+            {/* Gemini Naturalist Exploration & Nature Q&A Card */}
+            <div className="p-6 bg-surface-container-lowest rounded-xl plate-border shadow-sm flex flex-col gap-5 border border-[#e5e0d3]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-[#e5e0d3]">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-sm">
+                    <span className="material-symbols-outlined text-[18px]">psychology</span>
+                  </span>
+                  <div>
+                    <h2 className="font-headline-md text-lg sm:text-xl font-serif text-primary font-semibold">
+                      Gemini Naturalist Exploration
+                    </h2>
+                    <p className="text-xs text-on-surface-variant">
+                      Cloud-assisted natural history synthesis & interactive ecological Q&A
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                      !connectivity.isOnline
+                        ? 'bg-zinc-100 text-zinc-600 border border-zinc-200'
+                        : connectivity.geminiStatus === 'ready'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : connectivity.geminiStatus === 'unconfigured'
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                        : 'bg-rose-50 text-rose-800 border border-rose-200'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        !connectivity.isOnline
+                          ? 'bg-zinc-400'
+                          : connectivity.geminiStatus === 'ready'
+                          ? 'bg-emerald-600'
+                          : 'bg-amber-500'
+                      }`}
+                    />
+                    <span>
+                      {!connectivity.isOnline
+                        ? 'Offline · Disabled'
+                        : connectivity.geminiStatus === 'ready'
+                        ? 'Cloud AI Ready'
+                        : connectivity.geminiStatus === 'unconfigured'
+                        ? 'API Key Needed'
+                        : 'Unavailable'}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Privacy Notice & Conscious Consent Toggle */}
+              <div className="p-3.5 rounded-lg bg-[#f6faf7] border border-[#d2e4d6] flex flex-col gap-2">
+                <div className="flex items-start gap-2 text-xs text-[#2e593a]">
+                  <span className="material-symbols-outlined text-[17px] text-secondary flex-shrink-0 mt-0.5">
+                    lock
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-semibold text-primary">Privacy & Data Boundary Guarantee</span>
+                    <span className="text-[#526354] leading-relaxed">
+                      All core BioCLIP-2 vision inferences execute locally. Gemini features contact Google via secure server proxy. Secrets remain exclusively on the backend.
+                    </span>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2.5 mt-1 pt-2 border-t border-[#d2e4d6]/60 cursor-pointer text-xs font-semibold text-primary select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeImageConsent}
+                    onChange={(e) => setIncludeImageConsent(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary accent-primary"
+                  />
+                  <span>Send specimen photograph to Gemini for multimodal visual inspection</span>
+                </label>
+                <span className="text-[11px] text-[#6c786e] pl-6">
+                  {includeImageConsent
+                    ? 'Opt-in active: Photograph will be transmitted via backend proxy to Gemini.'
+                    : 'Opt-out default: Zero photo data will be sent. Gemini will synthesize natural history from taxonomy metadata only.'}
+                </span>
+              </div>
+
+              {/* Offline or Service Unavailable Explanations */}
+              {!connectivity.isOnline ? (
+                <div className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs text-zinc-700 flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-[20px] text-zinc-500 flex-shrink-0">
+                    cloud_off
+                  </span>
+                  <div>
+                    <strong className="block font-semibold text-zinc-800 mb-0.5">
+                      Gemini Naturalist is currently unavailable offline
+                    </strong>
+                    <span>
+                      An internet connection is required to contact Google Gemini. Your local BioCLIP-2 candidate matches, offline taxonomy traits, and Field Journal records remain 100% accessible above.
+                    </span>
+                  </div>
+                </div>
+              ) : connectivity.geminiStatus === 'unconfigured' ? (
+                <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-[20px] text-amber-600 flex-shrink-0">
+                    key
+                  </span>
+                  <div>
+                    <strong className="block font-semibold text-amber-900 mb-0.5">
+                      GEMINI_API_KEY is not configured on backend
+                    </strong>
+                    <span>
+                      To enable optional AI visual explanations and nature Q&A, set <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">GEMINI_API_KEY</code> in your backend <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">.env</code> file. The key is kept strictly server-side.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* Online and Configured Section */
+                <div className="flex flex-col gap-4">
+                  {/* Action Button: Explain Specimen */}
+                  <div>
+                    <button
+                      onClick={handleAskGeminiExplanation}
+                      disabled={geminiLoading}
+                      className="px-4 py-2.5 rounded-lg bg-primary text-on-primary font-label-md text-xs sm:text-sm font-semibold hover:bg-primary-container transition-all flex items-center justify-center gap-2 shadow-sm min-h-[42px] disabled:opacity-50"
+                    >
+                      <span className={`material-symbols-outlined text-[18px] ${geminiLoading ? 'animate-spin' : ''}`}>
+                        {geminiLoading ? 'hourglass_top' : 'auto_awesome'}
+                      </span>
+                      <span>
+                        {geminiLoading
+                          ? 'Consulting Gemini Naturalist...'
+                          : geminiExplanation
+                          ? 'Refresh Natural History Narrative'
+                          : `Generate Ecological Narrative for ${top_candidate.common_name}`}
+                      </span>
+                    </button>
+                  </div>
+
+                  {geminiError && (
+                    <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[16px]">error</span>
+                      <span>{geminiError}</span>
+                    </div>
+                  )}
+
+                  {/* Render Natural History Narrative if Generated */}
+                  {geminiExplanation && (
+                    <div className="p-4 sm:p-5 rounded-xl bg-white plate-border shadow-sm flex flex-col gap-3.5 animate-fadeIn">
+                      <div className="flex items-center justify-between pb-2 border-b border-[#e5e0d3]">
+                        <span className="font-serif font-bold text-primary text-base">
+                          {geminiExplanation.specimen_name}
+                        </span>
+                        <span className="text-[11px] text-[#526354] bg-[#f4f2ea] px-2 py-0.5 rounded font-mono">
+                          Provider: {geminiExplanation.provider}
+                        </span>
+                      </div>
+
+                      {/* Mandatory Fungi Safety Guard Banner */}
+                      {(geminiExplanation.is_fungi || geminiExplanation.safety_warnings.length > 0) && (
+                        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-900 flex items-start gap-2 font-medium">
+                          <span className="material-symbols-outlined text-[18px] text-red-600 flex-shrink-0">
+                            warning
+                          </span>
+                          <div className="space-y-1">
+                            {geminiExplanation.safety_warnings.map((w, idx) => (
+                              <p key={idx}>{w}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="font-body-md text-xs sm:text-sm text-on-surface leading-relaxed">
+                        {geminiExplanation.summary}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                        <div className="p-3 rounded-lg bg-[#f9faf8] border border-[#e5e0d3]">
+                          <span className="font-bold text-primary block mb-1">Ecological Niche</span>
+                          <p className="text-[#526354] leading-relaxed">{geminiExplanation.ecological_niche}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-[#f9faf8] border border-[#e5e0d3]">
+                          <span className="font-bold text-primary block mb-1">Seasonal Behavior</span>
+                          <p className="text-[#526354] leading-relaxed">{geminiExplanation.seasonal_behavior}</p>
+                        </div>
+                      </div>
+
+                      {geminiExplanation.lookalike_differentiators && geminiExplanation.lookalike_differentiators.length > 0 && (
+                        <div className="p-3 rounded-lg bg-[#fbfdfa] border border-[#e5e0d3] text-xs">
+                          <span className="font-bold text-primary block mb-1.5">Key Lookalike Distinctions</span>
+                          <ul className="list-disc list-inside space-y-1 text-[#526354]">
+                            {geminiExplanation.lookalike_differentiators.map((diff, i) => (
+                              <li key={i}>{diff}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {geminiExplanation.indigenous_or_cultural_context && (
+                        <div className="p-3 rounded-lg bg-[#fdfbf7] border border-[#ebdcc4] text-xs text-[#5c4930]">
+                          <span className="font-bold text-[#44331b] block mb-1">Cultural & Indigenous History</span>
+                          <p className="leading-relaxed">{geminiExplanation.indigenous_or_cultural_context}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Interactive Q&A Form */}
+                  <div className="pt-2 border-t border-[#e5e0d3] flex flex-col gap-3">
+                    <span className="font-label-md text-xs text-primary font-semibold">
+                      Ask the Naturalist
+                    </span>
+
+                    <form onSubmit={handleAskNaturalistQuestion} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={userQuestion}
+                        onChange={(e) => setUserQuestion(e.target.value)}
+                        placeholder={`Ask anything about ${top_candidate.common_name} (habitat, pollinators, winter survival)...`}
+                        className="flex-1 px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-[#e5e0d3] focus:border-primary outline-none transition-colors"
+                        disabled={qaLoading}
+                      />
+                      <button
+                        type="submit"
+                        disabled={qaLoading || !userQuestion.trim()}
+                        className="px-4 py-2 bg-primary text-on-primary rounded-lg text-xs font-semibold hover:bg-primary-container transition-colors disabled:opacity-50 min-h-[38px] flex items-center gap-1.5"
+                      >
+                        <span className={`material-symbols-outlined text-[16px] ${qaLoading ? 'animate-spin' : ''}`}>
+                          {qaLoading ? 'progress_activity' : 'send'}
+                        </span>
+                        <span>Ask</span>
+                      </button>
+                    </form>
+
+                    {qaError && (
+                      <div className="text-xs text-rose-700 bg-rose-50 p-2 rounded border border-rose-200">
+                        {qaError}
+                      </div>
+                    )}
+
+                    {/* Q&A Chat History */}
+                    {qaHistory.length > 0 && (
+                      <div className="space-y-2.5 mt-2 max-h-60 overflow-y-auto pr-1">
+                        {qaHistory.map((item, idx) => (
+                          <div key={idx} className="p-3 rounded-lg bg-[#f9faf8] border border-[#e5e0d3] text-xs space-y-1.5">
+                            <div className="font-semibold text-primary flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[15px] text-secondary">help</span>
+                              <span>{item.question}</span>
+                            </div>
+                            <p className="text-[#526354] leading-relaxed pl-5">{item.answer}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Prominent Naturalist "Now Look Up" Callout */}
             <div className="p-6 lg:p-8 bg-tertiary-fixed text-on-tertiary-fixed rounded-xl shadow-md relative overflow-hidden flex flex-col gap-4 border border-[#e5e0d3]">

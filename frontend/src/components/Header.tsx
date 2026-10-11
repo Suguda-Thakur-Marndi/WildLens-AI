@@ -12,11 +12,15 @@ const SystemStatusModal = dynamic(
   { ssr: false }
 );
 
+import { useServiceConnectivity } from '@/src/lib/connectivity';
+
 export default function Header() {
   const pathname = usePathname();
   const [modelTelemetry, setModelTelemetry] = useState<ModelTelemetry | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
+
+  const connectivity = useServiceConnectivity();
 
   useEffect(() => {
     fetchModelStatus().then(setModelTelemetry).catch(() => {});
@@ -47,26 +51,9 @@ export default function Header() {
     { label: 'About', href: '/about' },
   ];
 
-  const statusShort =
-    modelTelemetry?.status === 'ready'
-      ? 'AI Ready'
-      : modelTelemetry?.status === 'loading'
-      ? 'Loading AI'
-      : 'App Ready';
-
-  const statusLabel =
-    modelTelemetry?.status === 'ready'
-      ? 'AI Ready · BioCLIP-2'
-      : modelTelemetry?.status === 'loading'
-      ? 'Loading AI Model...'
-      : 'Application Ready · AI Offline';
-
-  const statusDotClass =
-    modelTelemetry?.status === 'ready'
-      ? 'bg-secondary'
-      : modelTelemetry?.status === 'loading'
-      ? 'bg-amber-500 animate-pulse'
-      : 'bg-zinc-400';
+  const statusShort = connectivity.badgeShortText;
+  const statusLabel = connectivity.badgeText;
+  const statusDotClass = connectivity.badgeDotClass;
 
   return (
     <header className="fixed top-0 w-full z-50 bg-[#f2fcf4]/95 backdrop-blur-md border-b border-[#e5e0d3] shadow-[0_1px_8px_rgba(41,50,45,0.04)] overflow-x-clip">

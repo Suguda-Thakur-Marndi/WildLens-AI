@@ -1,4 +1,11 @@
-import { IdentificationResult, ModelTelemetry, FieldMission } from '@/src/types';
+import {
+  IdentificationResult,
+  ModelTelemetry,
+  FieldMission,
+  GeminiStatusResponse,
+  GeminiExplainResponse,
+  GeminiAskResponse,
+} from '@/src/types';
 import { FIELD_MISSIONS, PRESET_TEST_SPECIMENS } from './sampleData';
 
 export type ApiErrorType =
@@ -37,10 +44,18 @@ export class WildLensApiError extends Error {
 }
 
 /**
- * Checks if a given hostname indicates a local development machine.
+ * Checks if a given hostname or URL indicates a local development machine.
  */
-export function isLocalhostAddress(hostname: string): boolean {
-  if (!hostname) return false;
+export function isLocalhostAddress(urlOrHost: string): boolean {
+  if (!urlOrHost) return false;
+  let hostname = urlOrHost.trim();
+  try {
+    if (hostname.includes('://')) {
+      hostname = new URL(hostname).hostname;
+    }
+  } catch {}
+  // Strip port if present without protocol (e.g. localhost:8000)
+  hostname = hostname.replace(/:.*$/, '');
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
@@ -622,4 +637,290 @@ export async function fetchMissions(): Promise<FieldMission[]> {
     console.warn('Backend /api/missions unreachable, using local mission library', err);
   }
   return FIELD_MISSIONS;
+}
+
+/**
+ * Fetches the status of the backend-hosted Gemini integration.
+ */
+export async function fetchGeminiStatus(): Promise<GeminiStatusResponse> {
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  if (!isOnline) {
+    return {
+      status: 'offline',
+      model: 'gemini-2.5-flash',
+      configured: false,
+      online: false,
+      message: 'Client device is offline.',
+    };
+  }
+
+  const endpoint = getApiUrl('api/gemini/status');
+  if (!endpoint) {
+    return {
+      status: 'unavailable',
+      model: 'gemini-2.5-flash',
+      configured: false,
+      online: false,
+      message: 'FastAPI backend not reachable.',
+    };
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    return {
+      status: 'unavailable',
+      model: 'gemini-2.5-flash',
+      configured: false,
+      online: false,
+      message: `Backend returned HTTP ${res.status}`,
+    };
+  } catch (err: any) {
+    return {
+      status: 'unavailable',
+      model: 'gemini-2.5-flash',
+      configured: false,
+      online: false,
+      message: err.message || 'Network error reaching Gemini proxy endpoint.',
+    };
+  }
+}
+
+/**
+ * Requests an in-depth ecological explanation and natural history context from Gemini.
+ * NOTE: Images are only sent if user explicitly opted in with user consent.
+ */
+export async function explainWithGemini(params: {
+  specimen_name: string;
+  scientific_name: string;
+  family?: string;
+  kingdom?: string;
+  diagnostic_traits?: string[];
+  confidence?: number;
+  image_base64?: string;
+  user_prompt?: string;
+}): Promise<GeminiExplainResponse> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new WildLensApiError({
+      message: 'Offline mode: Gemini is disabled.',
+      errorType: 'network_error',
+      userMessage:
+        'Gemini Naturalist requires an active internet connection. Offline natural history traits from your local taxonomy database remain available above.',
+      canRetry: false,
+    });
+  }
+
+  const endpoint = getApiUrl('api/gemini/explain');
+  if (!endpoint) {
+    throw new WildLensApiError({
+      message: 'FastAPI backend unconfigured.',
+      errorType: 'unconfigured_backend',
+      userMessage:
+        'FastAPI backend is required to proxy requests to Gemini safely with backend-managed keys. Ensure backend is running.',
+      canRetry: false,
+    });
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    }
+
+    let detail = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      detail = j.detail || j.message || detail;
+    } catch {}
+
+    if (res.status === 429) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 429,
+        errorType: 'cold_start_or_server_error',
+        userMessage: 'Gemini API rate limit or quota exceeded. Please wait a moment before trying again.',
+        canRetry: true,
+      });
+    }
+
+    if (res.status === 503) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 503,
+        errorType: 'cold_start_or_server_error',
+        userMessage:
+          detail.includes('GEMINI_API_KEY') || detail.includes('not configured')
+            ? 'Gemini API key is not configured on the backend. Please add GEMINI_API_KEY to your backend .env file.'
+            : `Gemini service is temporarily unavailable: ${detail}`,
+        canRetry: true,
+      });
+    }
+
+    if (res.status === 502) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 502,
+        errorType: 'cold_start_or_server_error',
+        userMessage:
+          detail.includes('authentication failed') || detail.includes('invalid') || detail.includes('revoked')
+            ? 'Gemini API authentication failed: The configured API key is invalid, revoked, or expired. Please update GEMINI_API_KEY on backend.'
+            : `Gemini upstream service error: ${detail}`,
+        canRetry: false,
+      });
+    }
+
+    if (res.status === 504) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 504,
+        errorType: 'cold_start_or_server_error',
+        userMessage: 'Gemini API request timed out. Please try again in a moment.',
+        canRetry: true,
+      });
+    }
+
+    throw new WildLensApiError({
+      message: detail,
+      status: res.status,
+      errorType: 'cold_start_or_server_error',
+      userMessage: `Gemini inquiry failed (${res.status}): ${detail}`,
+      canRetry: true,
+    });
+  } catch (err: any) {
+    if (err instanceof WildLensApiError) throw err;
+    throw new WildLensApiError({
+      message: err.message || 'Network request failed',
+      errorType: 'network_error',
+      userMessage:
+        'Could not reach Gemini service via backend. Please check network connectivity and backend server status.',
+      canRetry: true,
+    });
+  }
+}
+
+/**
+ * Naturalist interactive Q&A powered by Gemini via backend.
+ */
+export async function askGeminiNaturalist(params: {
+  question: string;
+  specimen_name?: string;
+  scientific_name?: string;
+  family?: string;
+  context?: string;
+  image_base64?: string;
+}): Promise<GeminiAskResponse> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new WildLensApiError({
+      message: 'Offline mode: Gemini is disabled.',
+      errorType: 'network_error',
+      userMessage: 'Naturalist Q&A requires internet connectivity to reach Gemini API.',
+      canRetry: false,
+    });
+  }
+
+  const endpoint = getApiUrl('api/gemini/ask');
+  if (!endpoint) {
+    throw new WildLensApiError({
+      message: 'FastAPI backend unconfigured.',
+      errorType: 'unconfigured_backend',
+      userMessage: 'FastAPI backend is required to proxy requests to Gemini safely.',
+      canRetry: false,
+    });
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    }
+
+    let detail = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      detail = j.detail || j.message || detail;
+    } catch {}
+
+    if (res.status === 429) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 429,
+        errorType: 'cold_start_or_server_error',
+        userMessage: 'Gemini API rate limit or quota exceeded. Please wait a moment before trying again.',
+        canRetry: true,
+      });
+    }
+
+    if (res.status === 503) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 503,
+        errorType: 'cold_start_or_server_error',
+        userMessage:
+          detail.includes('GEMINI_API_KEY') || detail.includes('not configured')
+            ? 'Gemini API key is not configured on the backend. Please add GEMINI_API_KEY to your backend .env file.'
+            : `Gemini service is temporarily unavailable: ${detail}`,
+        canRetry: true,
+      });
+    }
+
+    if (res.status === 502) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 502,
+        errorType: 'cold_start_or_server_error',
+        userMessage:
+          detail.includes('authentication failed') || detail.includes('invalid') || detail.includes('revoked')
+            ? 'Gemini API authentication failed: The configured API key is invalid, revoked, or expired. Please update GEMINI_API_KEY on backend.'
+            : `Gemini upstream service error: ${detail}`,
+        canRetry: false,
+      });
+    }
+
+    if (res.status === 504) {
+      throw new WildLensApiError({
+        message: detail,
+        status: 504,
+        errorType: 'cold_start_or_server_error',
+        userMessage: 'Gemini API request timed out. Please try again in a moment.',
+        canRetry: true,
+      });
+    }
+
+    throw new WildLensApiError({
+      message: detail,
+      status: res.status,
+      errorType: 'cold_start_or_server_error',
+      userMessage: `Question answering failed (${res.status}): ${detail}`,
+      canRetry: true,
+    });
+  } catch (err: any) {
+    if (err instanceof WildLensApiError) throw err;
+    throw new WildLensApiError({
+      message: err.message || 'Network request failed',
+      errorType: 'network_error',
+      userMessage: 'Unable to reach backend Q&A endpoint. Please check connection.',
+      canRetry: true,
+    });
+  }
 }

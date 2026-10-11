@@ -31,13 +31,28 @@ models/bioclip_cache/
 
 # Environment variables & local secrets
 .env
+.env.*
 .env.local
+frontend/.env
+frontend/.env.*
+frontend/.env.local
+backend/.env
+backend/.env.*
+backend/.env.local
+!.env.example
+!frontend/.env.example
+!backend/.env.example
+!**/.env.example
+
 
 # OS & Editor files
 .DS_Store
 Thumbs.db
 *.swp
 .vscode/
+
+# Scratch & runtime stores
+scratch/
 .idea/
 
 # BioCLIP-2 model cache

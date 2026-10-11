@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { ModelTelemetry } from '@/src/types';
 import { fetchModelStatus } from '@/src/lib/api';
+import { useServiceConnectivity } from '@/src/lib/connectivity';
 
 interface SystemStatusModalProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ export default function SystemStatusModal({
 }: SystemStatusModalProps) {
   const [telemetry, setTelemetry] = useState<ModelTelemetry | null>(initialTelemetry || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const connectivity = useServiceConnectivity();
 
   useEffect(() => {
     if (initialTelemetry) {
@@ -27,7 +29,7 @@ export default function SystemStatusModal({
   }, [initialTelemetry]);
 
   useEffect(() => {
-    if (isOpen && !telemetry) {
+    if (isOpen) {
       handleRefresh();
     }
   }, [isOpen]);
@@ -46,6 +48,7 @@ export default function SystemStatusModal({
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
+      connectivity.refresh();
       const data = await fetchModelStatus();
       setTelemetry(data);
       if (onRefresh) onRefresh();
@@ -58,7 +61,7 @@ export default function SystemStatusModal({
 
   if (!isOpen) return null;
 
-  const isReady = telemetry?.status === 'ready';
+  const isReady = telemetry?.status === 'ready' || connectivity.bioclipStatus === 'ready';
   const visionModelId = telemetry?.vision_model_id || telemetry?.model_name || 'imageomics/bioclip-2';
   const visionLicense = telemetry?.vision_model_license || telemetry?.model_license || 'MIT';
   const visionDevice = (telemetry?.vision_device || telemetry?.device || 'cpu').toUpperCase();
@@ -83,10 +86,10 @@ export default function SystemStatusModal({
             </div>
             <div>
               <h2 id="system-status-title" className="font-serif text-lg sm:text-xl font-bold text-[#1b4332]">
-                System Architecture & Hardware Telemetry
+                System Architecture & Connectivity Telemetry
               </h2>
               <p className="text-[11px] sm:text-xs text-[#526354]">
-                Single-model edge AI: BioCLIP-2 Vision Backbone + Curated Natural History KB
+                Hybrid Offline / Online Architecture: BioCLIP-2 + Server-managed Gemini API
               </p>
             </div>
           </div>
@@ -101,25 +104,18 @@ export default function SystemStatusModal({
 
         {/* Modal Scrollable Body */}
         <div className="p-5 sm:p-7 overflow-y-auto space-y-5 text-xs sm:text-sm">
-          {/* Edge Status & Overall Health Badge */}
+          {/* Status Banner */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-[#e8f3ea] border border-[#c3dfc7]">
             <div className="flex items-center gap-2.5">
-              <span
-                className={`w-3 h-3 rounded-full ${
-                  isReady
-                    ? 'bg-[#2e6b47] animate-pulse'
-                    : telemetry?.status === 'loading'
-                    ? 'bg-amber-500'
-                    : 'bg-red-500'
-                }`}
-              />
-              <span className="font-semibold text-[#1b4332]">
-                {isReady
-                  ? 'FastAPI Backend Connected · Single BioCLIP-2 Model'
-                  : telemetry?.status === 'loading'
-                  ? 'AI Engine Initializing...'
-                  : 'FastAPI Backend Disconnected · Live Inference Unavailable'}
-              </span>
+              <span className={`w-3 h-3 rounded-full ${connectivity.badgeDotClass}`} />
+              <div className="flex flex-col">
+                <span className="font-semibold text-[#1b4332]">
+                  {connectivity.badgeText}
+                </span>
+                <span className="text-[11px] text-[#526354]">
+                  {connectivity.statusDescription}
+                </span>
+              </div>
             </div>
             <button
               onClick={handleRefresh}
@@ -131,6 +127,75 @@ export default function SystemStatusModal({
               </span>
               <span>{isRefreshing ? 'Checking...' : 'Refresh'}</span>
             </button>
+          </div>
+
+          {/* 4 Multi-State Diagnostic Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {/* 1. Internet Reachability */}
+            <div className="p-2.5 rounded-lg bg-white border border-[#e2dec9] flex flex-col gap-1">
+              <span className="text-[10px] text-[#526354] uppercase tracking-wider font-semibold">
+                Internet
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${connectivity.isOnline ? 'bg-[#2e6b47]' : 'bg-zinc-400'}`} />
+                <span className="font-semibold text-[#1b4332]">
+                  {connectivity.isOnline ? 'Connected' : 'Offline'}
+                </span>
+              </div>
+            </div>
+
+            {/* 2. Backend Service */}
+            <div className="p-2.5 rounded-lg bg-white border border-[#e2dec9] flex flex-col gap-1">
+              <span className="text-[10px] text-[#526354] uppercase tracking-wider font-semibold">
+                FastAPI Backend
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${connectivity.backendConnected ? 'bg-[#2e6b47]' : 'bg-red-500'}`} />
+                <span className="font-semibold text-[#1b4332] truncate">
+                  {connectivity.backendConnected
+                    ? connectivity.isLocalBackend ? 'Localhost (8000)' : 'Remote'
+                    : 'Disconnected'}
+                </span>
+              </div>
+            </div>
+
+            {/* 3. BioCLIP Vision AI */}
+            <div className="p-2.5 rounded-lg bg-white border border-[#e2dec9] flex flex-col gap-1">
+              <span className="text-[10px] text-[#526354] uppercase tracking-wider font-semibold">
+                BioCLIP-2 AI
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${
+                  connectivity.bioclipStatus === 'ready'
+                    ? 'bg-[#2e6b47]'
+                    : connectivity.bioclipStatus === 'loading'
+                    ? 'bg-amber-500 animate-pulse'
+                    : 'bg-zinc-400'
+                }`} />
+                <span className="font-semibold text-[#1b4332]">
+                  {connectivity.bioclipStatus === 'ready' ? 'Ready' : connectivity.bioclipStatus}
+                </span>
+              </div>
+            </div>
+
+            {/* 4. Gemini API */}
+            <div className="p-2.5 rounded-lg bg-white border border-[#e2dec9] flex flex-col gap-1">
+              <span className="text-[10px] text-[#526354] uppercase tracking-wider font-semibold">
+                Gemini Naturalist
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${
+                  connectivity.geminiStatus === 'ready'
+                    ? 'bg-[#2e6b47]'
+                    : connectivity.geminiStatus === 'offline'
+                    ? 'bg-zinc-400'
+                    : 'bg-amber-500'
+                }`} />
+                <span className="font-semibold text-[#1b4332] capitalize">
+                  {connectivity.geminiStatus}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Architecture Cards Grid */}
@@ -150,7 +215,7 @@ export default function SystemStatusModal({
                 {visionModelId}
               </h3>
               <p className="text-[11px] text-[#526354] mb-3">
-                ViT-L/14 transformer trained on TreeOfLife-200M (200M biological photos across the Tree of Life).
+                ViT-L/14 transformer trained on TreeOfLife-200M biological photos.
               </p>
 
               <div className="space-y-1.5 mt-auto pt-2 border-t border-[#f0ede1] text-xs">
@@ -163,74 +228,81 @@ export default function SystemStatusModal({
                   <span className="font-semibold text-[#1b4332] font-mono">{visionDevice}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Precision:</span>
+                  <span className="text-[#6c786e]">Offline Capability:</span>
                   <span className="font-semibold text-[#1b4332]">
-                    {visionDevice === 'CUDA' ? 'fp16 (VRAM optimized)' : 'fp32 (Multi-threaded AVX)'}
+                    {connectivity.canPerformOfflineInference ? 'Supported (Local Engine)' : 'Requires Active Backend'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#6c786e]">Memory Footprint:</span>
                   <span className="font-semibold text-[#1b4332]">
-                    {visionMemMb ? `${visionMemMb} MB VRAM` : '~1.7 GB RAM (Weights)'}
+                    {visionMemMb ? `${visionMemMb} MB` : '~1.7 GB (Weights)'}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Curated Natural History & Safety Card */}
+            {/* Gemini Cloud Naturalist Card */}
             <div className="flex flex-col p-4 rounded-xl bg-white border border-[#e2dec9] shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-[#c48e28]/5 rounded-bl-full pointer-events-none" />
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#0d6efd]/5 rounded-bl-full pointer-events-none" />
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#916518] bg-[#fbf3db] px-2 py-0.5 rounded-md">
-                  Taxonomy & Safety
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#0d6efd] bg-[#e7f1ff] px-2 py-0.5 rounded-md">
+                  Cloud Assistant
                 </span>
                 <span className="text-[10px] font-semibold text-[#526354] bg-[#f4f2ea] px-2 py-0.5 rounded">
-                  Curated KB
+                  Server-Managed Key
                 </span>
               </div>
               <h3 className="font-bold text-[#1b4332] text-base mb-1 font-mono">
-                taxonomy_kb.py
+                Google Gemini API
               </h3>
               <p className="text-[11px] text-[#526354] mb-3">
-                Zero-hallucination deterministic botanical and zoological trait knowledge base with mandatory fungi guards.
+                Optional natural history synthesis and interactive Q&A. GEMINI_API_KEY is kept strictly on the backend.
               </p>
 
               <div className="space-y-1.5 mt-auto pt-2 border-t border-[#f0ede1] text-xs">
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Curated Species:</span>
-                  <span className="font-semibold text-[#1b4332]">{telemetry?.supported_taxa_count || 36} verified taxa</span>
+                  <span className="text-[#6c786e]">Model ID:</span>
+                  <span className="font-semibold text-[#1b4332] font-mono">
+                    {connectivity.geminiModel || 'gemini-2.5-flash'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Hallucination Risk:</span>
-                  <span className="font-semibold text-[#2e6b47]">0% (Deterministic KB)</span>
+                  <span className="text-[#6c786e]">Status:</span>
+                  <span className="font-semibold text-[#1b4332] capitalize">
+                    {connectivity.geminiStatus}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Mushroom Guard:</span>
-                  <span className="font-semibold text-[#b91c1c]">Active (Never Eat Wild Fungi)</span>
+                  <span className="text-[#6c786e]">Privacy Control:</span>
+                  <span className="font-semibold text-[#2e6b47]">Explicit Opt-In Only</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6c786e]">Confidence Bands:</span>
-                  <span className="font-semibold text-[#1b4332]">likely / possible / unsure</span>
+                  <span className="text-[#6c786e]">Key Storage:</span>
+                  <span className="font-semibold text-[#1b4332]">Backend .env Only (Never Exposed)</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Operational Guarantees & Cache Details */}
+          {/* Operational Guarantees & Honest Offline Policy */}
           <div className="p-4 rounded-xl bg-[#f8f6f0] border border-[#e2dec9] space-y-2 text-xs">
             <div className="font-semibold text-[#1b4332] flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[16px] text-[#2e6b47]">security</span>
-              <span>Air-Gapped Offline Privacy Guarantees</span>
+              <span>Offline Architecture & Privacy Guarantees</span>
             </div>
-            <ul className="space-y-1 text-[#526354] list-disc list-inside">
+            <ul className="space-y-1.5 text-[#526354] list-disc list-inside">
               <li>
-                <strong className="text-[#19231c]">Weight Cache:</strong> <code className="bg-black/5 px-1 py-0.5 rounded">{telemetry?.cache_directory || 'models/bioclip_cache'}</code> (enforced with <code>HF_HUB_OFFLINE=1</code>).
+                <strong className="text-[#19231c]">Persistent Field Journal:</strong> All entries and notes are stored persistently in browser IndexedDB and accessible offline.
               </li>
               <li>
-                <strong className="text-[#19231c]">Taxa Grounding:</strong> {telemetry?.supported_taxa_count || 36} curated reference taxa with precomputed 768-dimensional lineage embeddings.
+                <strong className="text-[#19231c]">Cached Taxonomy (36 Taxa):</strong> Reference species database with diagnostic traits and habitat notes is cached locally in browser storage.
               </li>
               <li>
-                <strong className="text-[#19231c]">Zero Cloud Egress:</strong> Model weights and inference passes execute 100% locally on your machine with zero network egress.
+                <strong className="text-[#19231c]">Honest AI Inference:</strong> BioCLIP-2 vision runs offline only when a local backend is active on 127.0.0.1. Remote backend setups require network reachability and are labeled as "Remote AI Online".
+              </li>
+              <li>
+                <strong className="text-[#19231c]">Zero Silent Image Uploads:</strong> Photos are never uploaded to Gemini or third parties without explicit, conscious user consent toggle.
               </li>
             </ul>
           </div>
@@ -239,7 +311,7 @@ export default function SystemStatusModal({
         {/* Modal Footer */}
         <div className="px-5 sm:px-7 py-3.5 bg-[#f0f7f1] border-t border-[#e2dec9] flex items-center justify-between text-xs">
           <span className="text-[#526354]">
-            WildLens AI · Hacktoberfest 2026 Touch Grass Edition
+            WildLens AI · Hybrid Online & Offline Architecture
           </span>
           <button
             onClick={onClose}

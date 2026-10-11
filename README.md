@@ -149,14 +149,29 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-### 2. Install Frontend Dependencies
+### 2. Configure Environment Variables
+Copy the secure environment template:
+```bash
+cp .env.example .env
+```
+Key configuration variables (see [.env.example](.env.example) and [API Integration Audit](docs/API_INTEGRATION_AUDIT.md)):
+- `PORT=8000`: FastAPI backend listening port.
+- `WILDLENS_HOST=127.0.0.1`: Network interface binding (`0.0.0.0` for LAN/hotspot).
+- `CORS_ORIGINS`: Comma-separated list of permitted frontend origins.
+- `GEMINI_API_KEY`: *(Optional)* Google AI Studio key for server-side natural history synthesis and nature Q&A. Leave blank for 100% offline BioCLIP-2 vision inference.
+- `NEXT_PUBLIC_API_URL`: Public backend endpoint for frontend builds (`http://localhost:8000`).
+
+> [!SECURITY]
+> Never commit real `.env` files or API keys. Real `.env` files are ignored by Git. In production hosting (Render, Railway, Fly.io, Cloud Run), configure `GEMINI_API_KEY` through the hosting provider's Environment Variables dashboard.
+
+### 3. Install Frontend Dependencies
 ```bash
 cd frontend
 npm install
 cd ..
 ```
 
-### 3. Start Backend & Frontend
+### 4. Start Backend & Frontend
 ```bash
 # Terminal 1: Backend
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --port 8000
@@ -171,25 +186,40 @@ Open **`http://localhost:3000`** in your browser.
 
 ## 9. Verification & Test Suites
 
-### Run Backend Tests (45 Tests)
+### Run Backend Unit & Integration Tests
 ```bash
-.\.venv\Scripts\python.exe -m pytest backend/tests -v
-```
-Verifies offline socket-level isolation, BioCLIP-2 candidate alignment, curated trait fallbacks, mandatory mushroom warning, and cache invalidation on model change.
+# Run unit tests (validation, secret masking, credential lifecycle, safety guards)
+.\.venv\Scripts\python.exe -m pytest backend/tests/unit -v
 
-### Run Frontend Tests (15 Tests)
+# Run API endpoint integration tests
+.\.venv\Scripts\python.exe -m pytest backend/tests/integration/test_api_endpoints.py -v
+```
+
+### Run Code Quality & Linting
+```bash
+# Backend lint check (Ruff)
+.\.venv\Scripts\ruff.exe check backend/
+
+# Frontend lint check (Oxlint)
+cd frontend && npm run lint && cd ..
+```
+
+### Run Frontend Tests (43 Tests)
 ```bash
 cd frontend
 npm test
 npm run build
 ```
-Validates single-model telemetry, camera stream handling, glove-friendly UI controls, and production build compilation.
+Validates API client resilience, error handling (429, 502, 503, 504), IndexedDB sync, camera stream permissions, and static build generation.
 
 ### Run Hardware Benchmark
 ```bash
 .\.venv\Scripts\python.exe scripts/benchmark_hardware.py
 ```
 Executes real timing and memory profiling across 21 biodiversity test images.
+
+### Security & API Audit
+For the complete production security audit, git history scan results, and hosting configuration guide, consult [docs/API_INTEGRATION_AUDIT.md](docs/API_INTEGRATION_AUDIT.md).
 
 ---
 
