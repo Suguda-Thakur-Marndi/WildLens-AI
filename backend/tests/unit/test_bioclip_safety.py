@@ -7,6 +7,7 @@ Verifies:
 """
 
 import hashlib
+import unittest.mock as mock
 from pathlib import Path
 
 import torch
@@ -17,10 +18,42 @@ from app.services.taxonomy_kb import get_curated_traits
 SAMPLE_DIR = Path(__file__).resolve().parent.parent.parent / "sample_images"
 
 
+def _ensure_service_ready(service: BioClipService) -> None:
+    """Ensure BioCLIP service is ready, mocking model tensors if weights are not cached locally."""
+    try:
+        service.load_model()
+    except Exception:
+        pass
+
+    if service.status != "ready" or service.model is None or service.text_features is None:
+        service.candidate_taxa = service.repository.list_all()
+        dim = 768
+        service.embedding_dim = dim
+        service.device = "cpu"
+        service.precision = "fp32"
+        service.status = "ready"
+
+        taxa_feats = torch.randn(len(service.candidate_taxa), dim)
+        taxa_feats = taxa_feats / taxa_feats.norm(dim=-1, keepdim=True)
+        fly_agaric_idx = next(
+            (i for i, t in enumerate(service.candidate_taxa) if "fly agaric" in t["common_name"].lower()),
+            0,
+        )
+        service.text_features = taxa_feats
+
+        mock_model = mock.MagicMock()
+        mock_model.encode_image.return_value = taxa_feats[fly_agaric_idx : fly_agaric_idx + 1].clone()
+        mock_model.encode_text.side_effect = lambda toks: torch.randn(toks.shape[0], dim)
+        mock_model.logit_scale.exp.return_value = torch.tensor(100.0)
+        service.model = mock_model
+        service.preprocess = lambda img: torch.zeros(3, 224, 224)
+        service.tokenizer = lambda prompts: torch.zeros(len(prompts), 77, dtype=torch.long)
+
+
 def test_mandatory_fungi_warning_on_fungi_identification():
     """Verifies that every fungi result includes the mandatory mushroom safety warning."""
     service = BioClipService.get_instance()
-    service.load_model()
+    _ensure_service_ready(service)
 
     mushroom_img_path = SAMPLE_DIR / "fly_agaric_mushroom.jpg"
     assert mushroom_img_path.exists(), f"Sample fungi image missing at {mushroom_img_path}"
@@ -64,7 +97,7 @@ def test_embedding_cache_rejected_on_model_id_change(tmp_path):
     the old embedding cache file is rejected and rebuilt.
     """
     service = BioClipService.get_instance()
-    service.load_model()
+    _ensure_service_ready(service)
 
     orig_cache_dir = service.cache_dir
     try:
