@@ -114,39 +114,18 @@ export function getApiBaseUrl(): string {
     return storedUrl.trim().replace(/\/+$/, '');
   }
 
-  // Determine if the current client is in a local development browser environment
-  const isBrowserLocal =
-    typeof window !== 'undefined' && isLocalhostAddress(window.location.hostname);
-
-  // 2. Configured public API URL via environment variables
+  // 2. Configured public API URL via environment variables (directly read from .env)
   const configuredUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
   if (configuredUrl && configuredUrl.trim()) {
     const cleaned = configuredUrl.trim().replace(/\/+$/, '');
 
-    // Validate configured URL in production browser context
-    if (typeof window !== 'undefined' && !isBrowserLocal) {
-      try {
-        const parsed = new URL(cleaned);
-        // Prevent accidental localhost target in production mobile/web clients
-        if (isLocalhostAddress(parsed.hostname)) {
-          console.warn(
-            `[WildLens API] Configured NEXT_PUBLIC_API_URL points to localhost (${cleaned}), which is unreachable from production mobile/web clients. Ignoring.`
-          );
-          return '';
-        }
-        // Prevent using GitHub Pages domain as the FastAPI backend host
-        if (isGitHubPagesHost(parsed.hostname)) {
-          console.warn(
-            `[WildLens API] Configured NEXT_PUBLIC_API_URL points to GitHub Pages (${cleaned}). GitHub Pages is a static host and cannot process FastAPI POST requests. Ignoring.`
-          );
-          return '';
-        }
-      } catch {
-        return '';
-      }
+    // Prevent using GitHub Pages static host as the FastAPI backend (which would 405)
+    if (!isGitHubPagesHost(cleaned)) {
+      return cleaned;
     }
-
-    return cleaned;
+    console.warn(
+      `[WildLens API] Configured NEXT_PUBLIC_API_URL points to GitHub Pages (${cleaned}). GitHub Pages is a static host and cannot process FastAPI POST requests. Ignoring.`
+    );
   }
 
   // 3. Server-side environment during SSR or build
@@ -154,10 +133,12 @@ export function getApiBaseUrl(): string {
     return process.env.BACKEND_URL.trim().replace(/\/+$/, '');
   }
 
-  // 4. Browser environment check for local development and LAN fallback
-  if (isBrowserLocal) {
+  // 4. Browser environment check for local development, LAN, or fallback
+  if (typeof window !== 'undefined') {
+    if (isGitHubPagesHost(window.location.hostname)) {
+      return '';
+    }
     if (
-      typeof window !== 'undefined' &&
       window.location.hostname &&
       window.location.hostname !== 'localhost' &&
       window.location.hostname !== '127.0.0.1'
@@ -167,8 +148,7 @@ export function getApiBaseUrl(): string {
     return 'http://127.0.0.1:8000';
   }
 
-  // In production static hosting without an explicit backend configured, do not guess
-  return '';
+  return 'http://127.0.0.1:8000';
 }
 
 /**
@@ -371,7 +351,7 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
         message: 'Local BioCLIP backend unreachable.',
         errorType: 'unconfigured_backend',
         userMessage:
-          'Local FastAPI backend is not running on http://127.0.0.1:8000. Start it via `python -m uvicorn app.main:app --reload` in your terminal.',
+          'Local FastAPI backend is not running on http://127.0.0.1:8000. Start it via `python -m uvicorn app.main:app --reload` or set NEXT_PUBLIC_API_URL in .env.',
         technicalDetails: 'Localhost fallback active, but no connection was established.',
         canRetry: true,
       });
@@ -381,7 +361,7 @@ export async function identifyImageFile(file: File): Promise<IdentificationResul
       message: 'FastAPI backend service not configured.',
       errorType: 'unconfigured_backend',
       userMessage:
-        'WildLens AI website is hosted on GitHub Pages (static hosting). Real-time BioCLIP-2 AI vision inference requires an external FastAPI backend service. Configure your backend URL in Settings or test with preset specimens below.',
+        'WildLens AI website is hosted on GitHub Pages (static hosting). Live BioCLIP-2 AI vision inference requires an external FastAPI backend service. Set NEXT_PUBLIC_API_URL in your .env or test with preset specimens below.',
       technicalDetails:
         'NEXT_PUBLIC_API_URL environment variable is unset, and no custom API URL is saved in Settings.',
       canRetry: false,

@@ -78,7 +78,7 @@ describe('Frontend API Client Service', () => {
     expect(isBackendConfigured()).toBe(false);
   });
 
-  it('ignores NEXT_PUBLIC_API_URL if it points to localhost when in a production browser environment', () => {
+  it('directly uses NEXT_PUBLIC_API_URL configured from env file without discarding it', () => {
     process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8000';
 
     Object.defineProperty(window, 'location', {
@@ -87,9 +87,9 @@ describe('Frontend API Client Service', () => {
       configurable: true,
     });
 
-    // In production on GitHub Pages, localhost:8000 is unreachable on a user's mobile device
-    expect(getApiBaseUrl()).toBe('');
-    expect(getApiUrl('api/identify')).toBe('');
+    expect(getApiBaseUrl()).toBe('http://localhost:8000');
+    expect(getApiUrl('api/identify')).toBe('http://localhost:8000/api/identify');
+    expect(isBackendConfigured()).toBe(true);
   });
 
   it('ignores NEXT_PUBLIC_API_URL if it points to GitHub Pages domain', () => {

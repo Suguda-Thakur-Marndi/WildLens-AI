@@ -40,7 +40,6 @@ export default function FieldModeLandingPage() {
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [identificationError, setIdentificationError] = useState<IdentificationErrorState | null>(null);
-  const [showConfigModal, setShowConfigModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(60);
@@ -687,13 +686,13 @@ export default function FieldModeLandingPage() {
                 identificationError.type === 'static_host_405' ||
                 identificationError.type === 'network_error') && (
                 <>
-                  <button
-                    onClick={() => setShowConfigModal(true)}
+                  <Link
+                    href="/settings"
                     className="px-3 py-1.5 rounded-xl bg-[#2e6b47] hover:bg-[#398257] text-[#f4fff4] text-xs font-bold flex items-center gap-1.5 transition-colors border border-[#439665]"
                   >
                     <span className="material-symbols-outlined text-[16px]">tune</span>
-                    <span>Configure Backend URL</span>
-                  </button>
+                    <span>Backend Settings</span>
+                  </Link>
                   <button
                     onClick={() => {
                       setIdentificationError(null);
@@ -837,14 +836,7 @@ export default function FieldModeLandingPage() {
         </div>
       </footer>
 
-      {/* Backend API Configuration Modal */}
-      <ApiConfigModal
-        isOpen={showConfigModal}
-        onClose={() => setShowConfigModal(false)}
-        onSaved={() => {
-          fetchModelStatus().then(setTelemetry).catch(() => {});
-        }}
-      />
+
     </div>
   );
 }
