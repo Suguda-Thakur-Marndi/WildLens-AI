@@ -1,29 +1,32 @@
 # Architecture & System Design
 
-WildLens AI is an offline-first nature exploration and species identification platform designed for the Hacktoberfest 2026 Open-Source AI Challenge (Week 1: "Touch Grass").
+WildLens AI is an offline-first nature exploration and species identification platform designed to help people observe the natural world directly, with minimum screen distraction.
 
-The core architectural requirement is complete local independence: all vision inference, image preprocessing, taxonomic resolution, and observation persistence execute on the user's personal hardware without network dependencies or cloud APIs.
+The core architectural requirement is complete local independence: all vision inference, image preprocessing, taxonomic resolution, and observation persistence execute on personal hardware without cloud APIs or network dependencies.
 
 ---
 
 ## 1. High-Level Architecture
 
 ```
-[ User Browser / Client Device ]
+[ Field Naturalist / Mobile or Laptop Browser ]
 │
-├── Frontend (React 19, TypeScript, Vite, Tailwind CSS)
-│   ├── UI Presentation Layer (Views, Layout, Cards, Modals)
-│   ├── Custom React Hooks (useJournal, useMissions, useSystemTelemetry)
+├── Frontend (Next.js 16 / React 19, TypeScript, Tailwind CSS)
+│   ├── Touch Grass Field Mode Landing (Default View)
+│   │   ├── Live Camera Viewfinder & Glove-Friendly Shutter
+│   │   ├── One-Glance Result (Name, Confidence Band, 1-Line Trait, Fungi Guard)
+│   │   └── "Now Look Up" Screen (Sensory Prompt + 60s Dimming Timer)
+│   ├── Secondary Drawer Menu (Journal, Missions, Optical Loupe, Settings)
 │   ├── Client Storage Engine (IndexedDB: 'WildLensAI_DB')
-│   └── API Client Service (src/services/api.ts)
+│   └── API Client Service (src/lib/api.ts)
 │
 └── Backend Service (FastAPI, Python 3.12, Uvicorn)
     ├── REST API Router (/api/identify, /api/missions, /api/model/status, /api/health)
-    ├── Request Validation & Preprocessing (Pillow verification, dimensions, memory guard)
+    ├── Configurable Host Binding (WILDLENS_HOST=127.0.0.1 or 0.0.0.0)
+    ├── Request Validation & Preprocessing (Pillow 2-pass verification, EXIF transpose)
     ├── Pydantic Schemas (strict contract serialization)
-    ├── Domain Exception Handlers (400, 500, 503 HTTP status mappings)
-    ├── Taxonomy Repository & Tree of Life Database (Curated biological taxa)
-    └── BioCLIP-2 Inference Service (Singleton ViT-L/14 runtime, 768-dim candidate embeddings)
+    ├── Curated Taxonomy Knowledge Base (taxonomy_kb.py: deterministic traits)
+    └── BioCLIP-2 Inference Engine (Singleton ViT-L/14 runtime, 768-dim embeddings)
 ```
 
 ---
@@ -32,51 +35,63 @@ The core architectural requirement is complete local independence: all vision in
 
 ### Frontend (`frontend/src/`)
 
-- **`components/`**: Pure presentational and interaction components.
-  - `layout/`: Global navigation header, mobile drawer, and offline status indicator.
-  - `identification/`: File drag-and-drop, camera shutter, and taxonomic result cards.
-  - `journal/`: Field observation history, filtering by verification state, and JSON export.
-  - `missions/`: Mindful outdoor exploration challenges with step-by-step guidance.
-  - `system/`: Real-time hardware telemetry and model runtime inspector.
-- **`features/field-mode/`**: Specialized high-contrast sunlight view designed for outdoor mobile screens with minimal distraction and screen break reminders.
-- **`hooks/`**: Encapsulates stateful workflows and keeps components clean:
-  - `useJournal`: Coordinates IndexedDB CRUD operations and sorting.
-  - `useMissions`: Manages mission state, completion tracking, and reflections.
-  - `useSystemTelemetry`: Polls engine health, model status, and triggers warmup.
-- **`services/`**: Low-level infrastructure clients:
-  - `api.ts`: Fetch-based typed API client.
-  - `journalStorage.ts`: Direct IndexedDB wrapper for observations.
+- **`app/page.tsx`**: Default Touch Grass Field Mode landing screen:
+  - Camera-first live viewfinder with large glove-friendly controls.
+  - Glanceable result view: Common/scientific name, confidence band (`likely` / `possible` / `unsure`), one-line diagnostic trait, and unmissable mushroom safety alert.
+  - "Now look up" mindful screen break: dims screen to near-black (`#050805`), displays sensory prompts, runs 60-second timer, returns to camera on tap or completion.
+  - Slide-out drawer menu for secondary features.
+- **`components/`**: Modular presentational components:
+  - `Header.tsx`: Clean top navigation bar with telemetry modal toggle.
+  - `CameraModal.tsx`: Accessible camera stream handler with permission diagnostics.
+  - `system/SystemStatusModal.tsx`: Real-time hardware telemetry and BioCLIP-2 architecture inspector.
+- **`app/journal/`**: Field observation history backed by browser IndexedDB with JSON export.
+- **`app/missions/`**: Sensory nature exploration missions focusing on audio, visual, and tactile awareness.
+- **`app/identify/`**: Detailed Optical Loupe dossier for in-depth taxonomic inspection.
 
 ### Backend (`backend/app/`)
 
-- **`api/routes.py`**: Thin HTTP route handlers delegating to services. No business logic or model tensor handling inside route handlers.
-- **`core/config.py`**: Centralized application settings using typed Pydantic fields (`host`, `port`, `model_identifier`, `vision_device`, `model_cache_dir`, `allowed_mime_types`).
-- **`core/exceptions.py`**: Domain-specific error hierarchy (`ImageValidationError`, `ModelNotReadyError`, `InferenceExecutionError`) with explicit HTTP status handlers.
-- **`utils/image_processing.py`**: Two-pass image validation pipeline. Pass 1 validates header integrity via `Image.verify()`; Pass 2 decodes pixel buffers, enforces RGB mode, checks dimension bounds, and applies Lanczos thumbnailing if dimensions exceed 3000px.
-- **`services/bioclip_service.py`**: Thread-safe singleton managing the PyTorch OpenCLIP BioCLIP-2 model, tokenizer, and precomputed 768-dim taxonomy text embeddings.
-- **`repositories/taxonomy_repository.py`**: Repository layer decoupling biological taxonomic queries from inference logic.
+- **`api/routes.py`**: Clean HTTP route handlers delegating to domain services.
+- **`core/config.py`**: Centralized configuration (`WILDLENS_HOST`, `PORT`, `VISION_MODEL_ID`, `VISION_DEVICE`, `MODEL_CACHE_DIR`).
+- **`services/bioclip_service.py`**: Thread-safe singleton managing the OpenCLIP BioCLIP-2 model, tokenizer, and precomputed 768-dim text embeddings with cache rejection on model change.
+- **`services/taxonomy_kb.py`**: Curated, factual taxonomic knowledge base. Provides factual field traits, lookalike warnings, and fallback prompt (`"Not sure. Check leaf edges, bark, habitat, and markings."`).
+- **`utils/image_processing.py`**: Two-pass image validation pipeline ensuring EXIF orientation normalization, RGB conversion, and dimension guards.
 
 ---
 
-## 3. Data Flow: Identification Workflow
+## 3. Data Flow: Field Identification Workflow
 
-1. **Capture / Selection**: The user captures a photo via device camera or file selector.
-2. **Client Validation**: The frontend checks MIME type (`image/jpeg`, `image/png`, `image/webp`) and size limits (< 15 MB) before dispatch.
-3. **HTTP Multipart Dispatch**: The image is sent to `POST /api/identify` as `multipart/form-data`.
-4. **Server Preprocessing**: The server decodes bytes with Pillow, verifies integrity, converts to RGB, and generates the input tensor using the model's native `preprocess_val` transform.
-5. **Zero-Shot Similarity**: The image tensor passes through the BioCLIP-2 ViT-L/14 vision backbone. Normalized image features are multiplied by precomputed 768-dimensional text embeddings:
-   $$\text{logits} = \exp(\text{logit\_scale}) \cdot (\mathbf{f}_{\text{image}} \cdot \mathbf{F}_{\text{text}}^T)$$
-   Probabilities are derived via Softmax over the candidate distribution.
-6. **Uncertainty & Lookalike Evaluation**: The top candidate is checked against calibrated confidence thresholds ($\ge 0.65$ similarity, $\ge 0.60$ softmax density, and margin $\ge 0.25$ for confident classification; specimens below 0.60 are rejected as "Not in my database"). Secondary matches are populated as lookalike candidates.
-7. **Local Persistence**: The user reviews the field traits and saves the observation directly into browser IndexedDB. No observation data is ever sent to a remote cloud server.
+```mermaid
+flowchart TD
+    A[Outdoor Camera / Field Photo] -->|Capture In Situ| B[Touch Grass Field View]
+    B -->|Offline Client Validation| C[FastAPI Backend: WILDLENS_HOST:8000]
+    C -->|Pillow 2-Pass Verification| D[BioClipService Singleton]
+    D -->|Native preprocess_val Transform| E[imageomics/bioclip-2 ViT-L/14]
+    E -->|768-dim Normalized Image Embedding| F[Cosine Alignment with Taxa Embeddings]
+    F -->|Curated Traits & Fungi Guard| G[Structured IdentificationResponse]
+    G --> H[One-Glance Result Card]
+    H -->|Tap Now Look Up| I[Sensory Screen Break: 60s Dimming to Near-Black]
+    I -->|Tap Anywhere or Timer End| B
+```
 
 ---
 
-## 4. Design Decisions & Trade-Offs
+## 4. Outdoor LAN & Hotspot Phone Access
+
+To run the backend on a laptop in a backpack while viewing from a phone outdoors without internet:
+1. Set `WILDLENS_HOST=0.0.0.0` in `.env` (or pass `--host 0.0.0.0`).
+2. Connect both laptop and phone to the same portable Wi-Fi hotspot (no internet uplink required).
+3. On your phone, open `http://<laptop-lan-ip>:3000`.
+
+> [!WARNING]
+> Binding to `0.0.0.0` exposes the backend server to all devices on the local network. Only use this on a trusted private hotspot or closed LAN, never on untrusted public networks.
+
+---
+
+## 5. Design Decisions & Trade-Offs
 
 | Decision | Alternative Considered | Rationale |
 |---|---|---|
-| **Open-weight BioCLIP-2 (ViT-L/14)** | Large Generative VLM (e.g. Qwen2.5-VL 7B) | BioCLIP-2 provides grounded Tree of Life taxonomy trained on TreeOfLife-200M (200M images, MIT license). General VLMs frequently hallucinate binomial names and require 8-14 GB VRAM. |
-| **Pre-computed 768-dim Text Embeddings** | Dynamic Per-Request Tokenization | Pre-computing dual-template lineage text embeddings for the curated taxa database reduces per-request latency and eliminates redundant forward passes on candidate taxonomy labels. |
-| **Browser IndexedDB Storage** | SQLite / Local Server DB | Storing observations in client IndexedDB gives users 100% data custody. Observations persist even if the local Python server is restarted or moved. |
-| **Vanilla CSS / Tailwind Utility** | Heavy Component Frameworks | Maintains high UI rendering performance and responsive responsiveness without framework bloat. |
+| **Single BioCLIP-2 Vision Model** | Chained Generative VLMs (Qwen/LLaVA) | BioCLIP-2 provides grounded Tree of Life taxonomy trained on TreeOfLife-200M (200M images, MIT license). Eliminating language models reduces VRAM overhead by ~5.5 GB and eliminates hallucinated binomial names. |
+| **Curated Deterministic KB** | LLM-generated field notes | Field notes come strictly from `taxonomy_kb.py`. When uncurated, displays honest generic check prompts rather than fabricating traits. |
+| **Touch Grass Dimming Screen** | Continuous screen engagement | Dims screen to near-black with a 60s timer to encourage presence in nature and conserve device battery outdoors. |
+| **Browser IndexedDB Storage** | Remote Cloud Database | Gives users complete data ownership. Observations persist locally with zero cloud synchronization. |

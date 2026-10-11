@@ -1,6 +1,6 @@
 # Model Evaluation & Taxonomic Analysis
 
-This document details the selection, benchmark performance, taxonomic coverage, uncertainty calibration, and limitations of the open-weight AI model driving **WildLens AI**.
+This document details the selection, benchmark performance, taxonomic coverage, uncertainty calibration, open advantage, and limitations of the open-weight AI model driving **WildLens AI**.
 
 ---
 
@@ -8,55 +8,55 @@ This document details the selection, benchmark performance, taxonomic coverage, 
 
 | Property | Value |
 |---|---|
-| **Model Name** | `imageomics/bioclip-2` |
+| **Model Name** | `imageomics/bioclip-2` (Configurable via `VISION_MODEL_ID`) |
 | **Architecture** | Vision Transformer (ViT-L/14), OpenCLIP architecture (768-dim embedding, 24 layers, width 1024, patch size 14) |
 | **License** | MIT License (Permissive Open Source) |
 | **Checkpoint Size** | ~1.7 GB (`open_clip_model.safetensors`) |
-| **Training Corpus** | TreeOfLife-200M (200 million biological images across ~454,000 biological taxa) |
+| **Training Corpus** | TreeOfLife-200M (200 million biological images across the Tree of Life) |
 | **Runtime Engine** | PyTorch 2.14+ / OpenCLIP |
 
 ### Why BioCLIP-2?
-Standard computer vision models (e.g., ImageNet-trained models) fail when identifying organisms in the wild because they lack fine-grained taxonomic hierarchies. Conventional models group all birds into vague categories or hallucinate binomial nomenclature.
+Standard computer vision models (e.g., ImageNet-trained models or general-purpose VLMs) struggle when identifying organisms in the wild because they lack fine-grained taxonomic hierarchies. General models often group all birds into vague categories, hallucinate fictitious binomial nomenclature, or require 8–14 GB VRAM to run.
 
-BioCLIP-2 scales the biological visual pretraining dataset from 10 million to **200 million biological images** (a 20x dataset scale) trained on the comprehensive Tree of Life taxonomy hierarchy by Imageomics, the Ohio Supercomputer Center, and collaborators. Upgrading from ViT-B/16 (512-dim) to ViT-L/14 (768-dim) enables the model to resolve subtle morphometric features such as leaf margin serrations, wing venation, and pileus gills, while remaining completely **MIT-licensed** and permissible for open-source offline deployment.
+BioCLIP-2 scales the biological visual pretraining dataset from 10 million to **200 million biological images** (TreeOfLife-200M) trained on the comprehensive Tree of Life taxonomy hierarchy by Imageomics, the Ohio Supercomputer Center, and collaborators. Upgrading from ViT-B/16 (512-dim) to ViT-L/14 (768-dim) enables the model to resolve subtle morphological features such as leaf margin serrations, wing venation, and pileus gills, while remaining completely **MIT-licensed** and running locally without cloud egress.
 
 ---
 
 ## 2. Empirical Benchmark Evaluation
 
-Evaluation was performed on an Intel Core i7-13700HX CPU (16 physical cores, 24 threads, 16 GB DDR5 RAM, NVIDIA RTX 5060 Laptop GPU) across 21 authentic nature specimen photographs:
+Evaluation was measured directly on an Intel Core i7-13700HX CPU (16 physical cores, 24 threads, 16 GB DDR5 RAM, NVIDIA RTX 5060 Laptop GPU) across 21 authentic nature specimen photographs using `scripts/benchmark_hardware.py`:
 
 | Test Sample | Clade / Category | True Organism | Top-1 Predicted Species | Cosine Sim | Softmax Conf | Latency (CPU) | Result |
 |---|---|---|---|---|---|---|---|
-| `american_robin.jpg` | Aves | *Turdus migratorius* | American Robin (*Turdus migratorius*) | **0.722** | **100.0%** | **3,375.6 ms** | **Correct** |
-| `blue_jay.jpg` | Aves | *Cyanocitta cristata* | Blue Jay (*Cyanocitta cristata*) | **0.726** | **100.0%** | **3,343.6 ms** | **Correct** |
-| `red_tailed_hawk.jpg` | Aves | *Buteo jamaicensis* | Red-tailed Hawk (*Buteo jamaicensis*) | **0.710** | **100.0%** | **3,380.7 ms** | **Correct** |
-| `white_oak_leaf.jpg` | Plantae | *Quercus alba* | White Oak (*Quercus alba*) | **0.729** | **100.0%** | **3,520.7 ms** | **Correct** |
-| `northern_red_oak_leaf.jpg` | Plantae (Lookalike) | *Quercus rubra* | Northern Red Oak (*Quercus rubra*) | **0.693** | **61.0%** | **3,289.2 ms** | **Correct** |
-| `hepatica_nobilis.jpg` | Plantae | *Hepatica nobilis* | Liverleaf (*Hepatica nobilis*) | **0.747** | **100.0%** | **3,335.0 ms** | **Correct** |
-| `harebell_flower.jpg` | Plantae | *Campanula rotundifolia* | Harebell (*Campanula rotundifolia*) | **0.673** | **99.2%** | **3,484.2 ms** | **Correct** |
-| `attached_blue_flower.jpg` | Plantae | *Campanula rotundifolia* | Harebell (*Campanula rotundifolia*) | **0.675** | **99.2%** | **3,265.4 ms** | **Correct** |
-| `yellow_trout_lily.jpg` | Plantae | *Erythronium americanum* | Yellow Trout Lily (*Erythronium americanum*) | **0.733** | **99.7%** | **3,598.3 ms** | **Correct** |
-| `eastern_poison_ivy.jpg` | Plantae | *Toxicodendron radicans* | Eastern Poison Ivy (*Toxicodendron radicans*) | **0.725** | **100.0%** | **3,263.4 ms** | **Correct** |
-| `monarch_butterfly.jpg` | Insecta | *Danaus plexippus* | Monarch Butterfly (*Danaus plexippus*) | **0.703** | **99.8%** | **3,456.1 ms** | **Correct** |
-| `viceroy_butterfly.jpg` | Insecta (Lookalike) | *Limenitis archippus* | Viceroy Butterfly (*Limenitis archippus*) | **0.732** | **100.0%** | **3,322.7 ms** | **Correct** |
-| `western_honey_bee.jpg` | Insecta | *Apis mellifera* | Western Honey Bee (*Apis mellifera*) | **0.712** | **100.0%** | **3,404.1 ms** | **Correct** |
-| `fly_agaric_mushroom.jpg` | Fungi | *Amanita muscaria* | Fly Agaric (*Amanita muscaria*) | **0.722** | **100.0%** | **3,246.4 ms** | **Correct** |
-| `golden_chanterelle.jpg` | Fungi | *Cantharellus cibarius* | Golden Chanterelle (*Cantharellus cibarius*) | **0.730** | **100.0%** | **3,452.1 ms** | **Correct** |
-| `turkey_tail_fungus.jpg` | Fungi | *Trametes versicolor* | Turkey Tail (*Trametes versicolor*) | **0.726** | **100.0%** | **3,348.8 ms** | **Correct** |
-| `pearl_oyster_mushroom.jpg` | Fungi | *Pleurotus ostreatus* | Pearl Oyster Mushroom (*Pleurotus ostreatus*) | **0.735** | **100.0%** | **3,515.8 ms** | **Correct** |
-| `eastern_chipmunk.jpg` | Mammalia | *Tamias striatus* | Eastern Chipmunk (*Tamias striatus*) | **0.739** | **100.0%** | **3,232.8 ms** | **Correct** |
-| `painted_turtle.jpg` | Reptilia | *Chrysemys picta* | Painted Turtle (*Chrysemys picta*) | **0.738** | **100.0%** | **3,327.8 ms** | **Correct** |
-| `tropical_foliage.jpg` | OOD | *Unrepresented in catalog* | Bloodroot (*Tentative NN*, 0.549) | **0.549** | **21.4%** | **3,388.5 ms** | **Inconclusive (OOD)** |
-| `blurry_woodland_shadow.jpg` | Ambiguous | *Low-SNR shadow* | Painted Turtle (*Ambiguous NN*, 0.676) | **0.676** | **29.4%** | **3,241.2 ms** | **Uncertain** |
+| `american_robin.jpg` | Aves | *Turdus migratorius* | American Robin (*Turdus migratorius*) | **0.722** | **100.0%** | **2,502.6 ms** | **Correct** |
+| `blue_jay.jpg` | Aves | *Cyanocitta cristata* | Blue Jay (*Cyanocitta cristata*) | **0.726** | **100.0%** | **2,537.6 ms** | **Correct** |
+| `red_tailed_hawk.jpg` | Aves | *Buteo jamaicensis* | Red-tailed Hawk (*Buteo jamaicensis*) | **0.710** | **100.0%** | **2,518.5 ms** | **Correct** |
+| `white_oak_leaf.jpg` | Plantae | *Quercus alba* | White Oak (*Quercus alba*) | **0.729** | **100.0%** | **2,525.2 ms** | **Correct** |
+| `northern_red_oak_leaf.jpg` | Plantae (Lookalike) | *Quercus rubra* | Northern Red Oak (*Quercus rubra*) | **0.693** | **61.0%** | **2,559.4 ms** | **Correct** |
+| `hepatica_nobilis.jpg` | Plantae | *Hepatica nobilis* | Liverleaf (*Hepatica nobilis*) | **0.747** | **100.0%** | **2,568.3 ms** | **Correct** |
+| `harebell_flower.jpg` | Plantae | *Campanula rotundifolia* | Harebell (*Campanula rotundifolia*) | **0.673** | **99.2%** | **2,542.4 ms** | **Correct** |
+| `attached_blue_flower.jpg` | Plantae | *Campanula rotundifolia* | Harebell (*Campanula rotundifolia*) | **0.675** | **99.2%** | **2,556.8 ms** | **Correct** |
+| `yellow_trout_lily.jpg` | Plantae | *Erythronium americanum* | Yellow Trout Lily (*Erythronium americanum*) | **0.733** | **99.7%** | **2,612.1 ms** | **Correct** |
+| `eastern_poison_ivy.jpg` | Plantae | *Toxicodendron radicans* | Eastern Poison Ivy (*Toxicodendron radicans*) | **0.725** | **100.0%** | **2,624.6 ms** | **Correct** |
+| `monarch_butterfly.jpg` | Insecta | *Danaus plexippus* | Monarch Butterfly (*Danaus plexippus*) | **0.703** | **99.8%** | **2,600.0 ms** | **Correct** |
+| `viceroy_butterfly.jpg` | Insecta (Lookalike) | *Limenitis archippus* | Viceroy Butterfly (*Limenitis archippus*) | **0.732** | **100.0%** | **2,576.3 ms** | **Correct** |
+| `western_honey_bee.jpg` | Insecta | *Apis mellifera* | Western Honey Bee (*Apis mellifera*) | **0.712** | **100.0%** | **2,515.3 ms** | **Correct** |
+| `fly_agaric_mushroom.jpg` | Fungi | *Amanita muscaria* | Fly Agaric (*Amanita muscaria*) | **0.722** | **100.0%** | **2,571.0 ms** | **Correct** |
+| `golden_chanterelle.jpg` | Fungi | *Cantharellus cibarius* | Golden Chanterelle (*Cantharellus cibarius*) | **0.730** | **100.0%** | **2,579.2 ms** | **Correct** |
+| `turkey_tail_fungus.jpg` | Fungi | *Trametes versicolor* | Turkey Tail (*Trametes versicolor*) | **0.726** | **100.0%** | **2,558.5 ms** | **Correct** |
+| `pearl_oyster_mushroom.jpg` | Fungi | *Pleurotus ostreatus* | Pearl Oyster Mushroom (*Pleurotus ostreatus*) | **0.735** | **100.0%** | **2,551.2 ms** | **Correct** |
+| `eastern_chipmunk.jpg` | Mammalia | *Tamias striatus* | Eastern Chipmunk (*Tamias striatus*) | **0.739** | **100.0%** | **2,561.5 ms** | **Correct** |
+| `painted_turtle.jpg` | Reptilia | *Chrysemys picta* | Painted Turtle (*Chrysemys picta*) | **0.738** | **100.0%** | **2,565.5 ms** | **Correct** |
+| `tropical_foliage.jpg` | OOD | *Unrepresented in catalog* | Bloodroot (*Tentative NN*, 0.549) | **0.549** | **21.4%** | **2,575.6 ms** | **Inconclusive (OOD)** |
+| `blurry_woodland_shadow.jpg` | Ambiguous | *Low-SNR shadow* | Painted Turtle (*Ambiguous NN*, 0.676) | **0.676** | **29.4%** | **2,557.2 ms** | **Uncertain** |
 
-- **In-Distribution Top-1 Accuracy**: **100.0% (19 / 19)**
+- **In-Distribution Top-1 Accuracy**: **100.0% (19 / 19)** on the evaluated catalog specimens
 - **In-Distribution Top-3 Accuracy**: **100.0% (19 / 19)**
 - **Out-of-Distribution Rejection Rate**: **100.0% (1 / 1)** (Tropical foliage rejected with status `inconclusive` below 0.60 threshold)
 - **Ambiguity Calibration Rate**: **100.0% (1 / 1)** (Blurry shadow classified as `uncertain` with narrow lookalike margin)
-- **Mean Warm Inference Latency (CPU)**: **3,371.1 ms**
-- **Projected GPU Latency (CUDA fp16)**: **~60 - 95 ms**
-- **Model Weight RAM Footprint**: **~1,822.7 MB RAM** (~2,043.4 MB peak RSS)
+- **Mean Warm Inference Latency (CPU)**: **2,559.9 ms** (~2.56 seconds per image on 16 threads)
+- **Projected GPU Latency (CUDA fp16)**: **~50 - 90 ms**
+- **Model Weight RAM Footprint**: **1,822.9 MB RAM** (2,044.9 MB peak process resident RAM)
 - **External Network Calls During Inference**: **0** (Enforced offline via loopback-only socket guards)
 
 ---
@@ -84,30 +84,39 @@ else:
     confidence_status = "uncertain"
 ```
 
-### Uncertainty Ratings & User UX:
-1. **`confident`**: Emerald badge. High visual similarity ($\ge 0.65$), high softmax mass ($\ge 0.60$), and distinct margin ($\ge 0.25$) over alternatives.
-2. **`moderate`**: Amber badge. Prompts the user: *"Possible match — examine distinguishing field marks outdoors."*
-3. **`uncertain`**: Orange badge. Top candidate similarity is moderate or margin to lookalikes is narrow ($< 0.25$). Suggests comparing top alternatives.
-4. **`inconclusive` / `Not in my database`**: Alert indicating the specimen is absent from the candidate catalog (cosine $< 0.60$), showing tentative nearest neighbors for educational reference only.
+### Uncertainty Ratings & Confidence Bands:
+1. **`likely` (`confident`)**: Emerald badge. High visual similarity ($\ge 0.65$), high softmax mass ($\ge 0.60$), and distinct margin ($\ge 0.25$) over alternatives.
+2. **`possible` (`moderate`)**: Amber badge. Prompts the user: *"Possible match — examine distinguishing field marks outdoors."*
+3. **`unsure` (`uncertain` / `inconclusive`)**: Gray/subtle badge. Indicates low similarity or narrow margin to lookalikes. Suggests inspecting physical leaf venation, bark, and habitat.
 
 ---
 
-## 4. Lookalike Disambiguation
+## 4. Open Advantage
 
-Nature is full of Batesian mimicry and convergent evolution. For example:
-- **Monarch Butterfly (*Danaus plexippus*)** vs. **Viceroy (*Limenitis archippus*)**:
-  - BioCLIP-2 correctly identifies Viceroy as Viceroy (*0.732*) with Monarch runner-up (*0.652*).
-  - Identifies Monarch as Monarch (*0.703*) with Viceroy runner-up (*0.641*).
-- **White Oak (*Quercus alba*)** vs. **Northern Red Oak (*Quercus rubra*)**:
-  - BioCLIP-2 separates rounded lobes (*Quercus alba*, 0.729) from bristle-tipped pointed lobes (*Quercus rubra*, 0.693).
-
-Rather than concealing alternative matches, WildLens AI surfaces candidate lookalikes and field verification tips (e.g., checking the black horizontal line across hindwing veins).
+WildLens AI is built on four core principles of open scientific AI:
+- **One Open Model**: Single foundation vision model (`imageomics/bioclip-2`, MIT license) rather than chained opaque LLM APIs.
+- **100% Local & Air-Gapped**: Runs entirely on your hardware with zero network connectivity required in the field.
+- **Zero Cost & No Accounts**: No subscription fees, no API tokens, no telemetry tracking, and no required sign-in.
+- **Data Privacy**: Your camera stream, field photos, and GPS metadata never leave your physical device.
+- **Swappable Architecture**: Configurable via `VISION_MODEL_ID` (e.g. swap back to `imageomics/bioclip` with zero code modifications). The system automatically detects model dimension changes and invalidates old embedding caches safely.
 
 ---
 
-## 5. Model Limitations & Safety Guardrails
+## 5. Field Test (Outdoor Observations)
+
+*The following section contains placeholder tables for logging real-world outdoor field tests across diverse weather and lighting conditions. Results should be entered manually from actual field outings.*
+
+| Date | Location | Weather / Light Condition | Organism Observed | Model Prediction | Confidence Band | Field Notes / Ground Truth Verification |
+|---|---|---|---|---|---|---|
+| *YYYY-MM-DD* | *e.g. Hemlock Ravine Trail* | *Dappled sunlight, overcast* | *e.g. Quercus alba* | *White Oak* | *Likely* | *Verified rounded lobes without bristle tips.* |
+| *YYYY-MM-DD* | *e.g. Wet meadow border* | *Direct noon sunlight* | *e.g. Danaus plexippus* | *Monarch Butterfly* | *Likely* | *Verified lack of black post-median hindwing band.* |
+| *YYYY-MM-DD* | *[Your field test]* | *[Lighting/weather]* | *[Specimen]* | *[Prediction]* | *[Band]* | *[Manual verification notes]* |
+| *YYYY-MM-DD* | *[Your field test]* | *[Lighting/weather]* | *[Specimen]* | *[Prediction]* | *[Band]* | *[Manual verification notes]* |
+
+---
+
+## 6. Model Limitations & Safety Guardrails
 
 1. **Macro / Microscope Scale**: BioCLIP-2 was trained on field photographs. It is not calibrated for microscopic cellular or spore morphology.
 2. **Juvenile vs. Adult Stages**: Nymphs, larvae, and seedlings may score lower similarity than mature specimens.
-3. **Toxic Lookalikes & Foraging Safety**: The platform strictly prohibits using model output for foraging, edible mushroom harvesting, or medicinal usage. Mandatory safety disclaimers are returned with every inference response.
-
+3. **Mandatory Fungi Safety Guard**: The platform strictly prohibits using model output for foraging, edible mushroom harvesting, or medicinal usage. Every fungi identification unconditionally triggers the mandatory warning: *"Never eat wild mushrooms based on this app."*

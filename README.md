@@ -1,275 +1,200 @@
 # WildLens AI 🌿
-**Hacktoberfest Open-Source AI Challenge — Week 1: Touch Grass**
+**Autonomous Naturalist Instrument & Touch Grass Field Guide**
 
-> **"Use open-source AI to help people explore the real world, rather than keeping them engaged with their screens."**
+> An offline-first nature exploration instrument powered by open-weight AI, built to help people observe the natural world directly rather than keeping them tethered to their screens.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
-[![AI Model: BioCLIP-2](https://img.shields.io/badge/AI%20Model-imageomics%2Fbioclip--2-blue.svg)](https://huggingface.co/imageomics/bioclip-2)
-[![Offline Verified](https://img.shields.io/badge/Offline-100%25%20Verified-brightgreen.svg)](docs/OFFLINE_VERIFICATION.md)
+[![AI Model: BioCLIP-2](https://img.shields.io/badge/Vision%20Model-imageomics%2Fbioclip--2-blue.svg)](https://huggingface.co/imageomics/bioclip-2)
+[![Offline Verified](https://img.shields.io/badge/Offline-Socket%20Audited-brightgreen.svg)](docs/OFFLINE_VERIFICATION.md)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Python-teal.svg)](https://fastapi.tiangolo.com)
-[![React + Vite](https://img.shields.io/badge/Frontend-React%20%2B%20Vite%20%2B%20Tailwind-purple.svg)](https://vitejs.dev)
+[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2016%20%2B%20React%2019-black.svg)](https://nextjs.org)
 
 ---
 
-## 1. Problem & Intended Audience
+## 1. Project Mission & Philosophy
 
-Modern wildlife and nature applications often duplicate the engagement traps of social media: continuous screen time, gamified streaks, endless algorithmic feeds, and remote cloud surveillance. 
+Modern wildlife apps often duplicate the engagement traps of consumer social media: gamified streaks, notification pings, endless scrolling feeds, and remote cloud surveillance.
 
-**WildLens AI** is an offline-first nature exploration tool built for hikers, naturalists, students, park visitors, and outdoor enthusiasts who want genuine, local open-weight AI to help them identify organisms in the wild — **and then immediately put their phone away to observe the living world.**
-
-### Core Philosophy: Touch Grass
-1. **Screen Detachment:** We provide fast, glanceable morphological traits, lookalike warnings, and sensory observation prompts, then actively remind the user to pocket the device.
-2. **Honest Scientific Uncertainty:** No fabricated high confidence scores or hallucinations. When an organism is ambiguous, the model rates it as moderate or uncertain and points users toward distinguishing physical markers to check outdoors.
-3. **100% Local & Edge Independent:** Runs completely offline in remote national parks, forests, and backcountry trails with zero cell service and zero cloud API subscriptions.
-
----
-
-## 2. Features That Actually Work
-
-- 📸 **Offline Nature Identification:** Upload or snap a photo of any wild flower, leaf, songbird, insect, or fungus. Evaluated on-device via the open-weight `imageomics/bioclip-2` vision model.
-- ☀️ **Outdoor Field Mode:** A high-contrast sunlight view with large glove-friendly controls, camera-first flow, concise field traits, and an automatic **Screen Break Reminder** ("Look up! Spend 2 minutes observing this organism without a phone").
-- 🧭 **Touch Grass Discovery Missions:** Mindful nature challenges (e.g. *The Silent Bird Watcher*, *The Twin Leaf Comparison*, *Five-Minute Forest Symphony*, *The Pollinator Dance*) designed to engage your hearing, sight, and tactile senses without addictive gamification.
-- 📖 **Local Field Journal:** Offline observation log backed by browser IndexedDB. Stores photographs, scientific classifications, personal notes, and manual habitat locations. Exportable anytime to clean JSON; zero user account required.
-- 🔬 **Biological Taxonomy Grounding:** Displays full Tree of Life classification (Kingdom, Phylum, Class, Order, Family, Genus, Species) grounded in BioCLIP-2's 200M-organism dataset (TreeOfLife-200M).
-- 🛡️ **Zero Tracking & Data Privacy:** No accounts, no analytics SDKs, no GPS tracking, and no external inference calls.
+**WildLens AI** takes the opposite approach:
+1. **Screen Minimization (Touch Grass Flow):** The screen should be the shortest part of your outdoor experience. Camera &rarr; one glance at the species name, confidence band, and key trait &rarr; a **"Now Look Up"** screen with a sensory prompt that dims the screen to near-black for 60 seconds while you look at the canopy, sky, or soil.
+2. **Single Open Model:** Driven entirely by `imageomics/bioclip-2` (ViT-L/14, trained on TreeOfLife-200M). No opaque cloud APIs, no multi-gigabyte language model layers, and zero cloud egress.
+3. **Curated, Honest Knowledge:** Distinguishing traits come strictly from a curated natural history database (`taxonomy_kb.py`). If a species lacks a curated entry, the app displays an honest observation checklist rather than fabricating facts.
+4. **Mandatory Safety First:** Every fungi identification unconditionally presents a mandatory safety warning: *Never eat wild mushrooms based on this app.*
 
 ---
 
-## 3. Genuine AI Foundation Model
+## 2. The Open Advantage
 
-| Property | Value |
-| :--- | :--- |
-| **Model Name** | `imageomics/bioclip-2` (BioCLIP-2) |
-| **Model Source** | [Hugging Face: imageomics/bioclip-2](https://huggingface.co/imageomics/bioclip-2) |
-| **Architecture** | OpenCLIP ViT-L/14 (Vision Transformer Large, 14x14 patch size, 768-dim embeddings) |
-| **Model Revision** | Pinned checkpoint `2957b322090f9cb17ae72c71981c7218a28d81e0` (`open_clip_model.safetensors`) |
-| **Model License** | **MIT License** (Permissive, open-source compliant) |
-| **Training Dataset** | **TreeOfLife-200M** (~200,000,000 biological images across ~454,000 taxa) |
-| **Checkpoints Size** | ~1.7 GB safetensors |
-| **Runtime Device** | Multi-threaded CPU (Intel Core i7-13700HX, 16 threads) or CUDA GPU (RTX 5060) |
-| **Measured Latency** | **~3,371 ms** on CPU (~60 - 95 ms projected on CUDA GPU) |
-
-### Why BioCLIP-2 over 3B–7B Vision-Language Models?
-General-purpose 3B–7B VLMs (such as Qwen2.5-VL or LLaVA) require 6–14 GB VRAM, struggle to run on portable field laptops, frequently hallucinate fictitious binomial nomenclature, and lack fine-grained biological taxonomy grounding. BioCLIP-2 was trained on **TreeOfLife-200M**—scaling biological image diversity 20x from 10M to 200M images across the entire Tree of Life taxonomic hierarchy. Using a ViT-L/14 backbone (768 dimensions), it resolves subtle morphological markers (such as butterfly hindwing cross-veins and leaf venation) while remaining completely **MIT-licensed**.
+WildLens AI is grounded in open science and digital privacy:
+- **One Open Model**: A single foundation vision model (`imageomics/bioclip-2`, MIT license) rather than chained opaque LLMs.
+- **Local & Air-Gapped**: Runs entirely on your laptop or local hardware. Works miles away from cell towers.
+- **Zero Cost & No Accounts**: No sign-in, no API keys, no subscription tiers, and no telemetry tracking.
+- **Data Privacy**: Photos and observation journals never leave your machine.
+- **Swappable Architecture**: Configurable via `VISION_MODEL_ID` (default: `imageomics/bioclip-2`). Swapping models automatically detects embedding dimension changes and safely rebuilds the candidate cache.
 
 ---
 
-## 4. System Architecture & Data Flow
+## 3. Touch Grass Field Mode Flow
+
+Field Mode is the default landing screen (`/`):
+- **Camera Viewfinder**: Fast, glove-friendly live camera viewfinder with high-contrast outdoor controls.
+- **One-Glance Result**:
+  - Species common and scientific name.
+  - Confidence band: **Likely** (emerald), **Possible** (amber), or **Unsure** (gray).
+  - One-line curated diagnostic trait from `taxonomy_kb.py`.
+  - Mandatory red mushroom warning banner on all fungi.
+- **"Now Look Up" Screen Break**:
+  - Tapping *"Now Look Up"* dims the screen to near-black (`#050805`) to conserve battery.
+  - Presents one sensory prompt (e.g., listening for distinct bird calls or feeling wind direction).
+  - A gentle 60-second timer runs; tapping anywhere or timer expiration returns directly to the camera.
+- **Secondary Features**: Field Journal, Field Missions, and Detailed Optical Loupe are organized into a clean drawer menu so the main screen stays uncluttered.
+
+---
+
+## 4. Hardware Benchmarks & Performance
+
+Measured directly on an Intel Core i7-13700HX (16 physical cores, 24 threads, 16 GB DDR5 RAM, NVIDIA RTX 5060 Laptop GPU) on Windows 11 using `scripts/benchmark_hardware.py`:
+
+| Specimen Test Photo | Clade / Category | Identified Species | Cosine Sim | Softmax Conf | Latency (CPU) | Result |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `american_robin.jpg` | Aves | American Robin (*Turdus migratorius*) | 0.722 | 100.0% | **2,502.6 ms** | PASS |
+| `blue_jay.jpg` | Aves | Blue Jay (*Cyanocitta cristata*) | 0.726 | 100.0% | **2,537.6 ms** | PASS |
+| `white_oak_leaf.jpg` | Plantae | White Oak (*Quercus alba*) | 0.729 | 100.0% | **2,525.2 ms** | PASS |
+| `northern_red_oak_leaf.jpg` | Plantae (Lookalike) | Northern Red Oak (*Quercus rubra*) | 0.693 | 61.0% | **2,559.4 ms** | PASS |
+| `monarch_butterfly.jpg` | Insecta | Monarch Butterfly (*Danaus plexippus*) | 0.703 | 99.8% | **2,600.0 ms** | PASS |
+| `viceroy_butterfly.jpg` | Insecta (Lookalike) | Viceroy Butterfly (*Limenitis archippus*) | 0.732 | 100.0% | **2,576.3 ms** | PASS |
+| `fly_agaric_mushroom.jpg` | Fungi | Fly Agaric (*Amanita muscaria*) | 0.722 | 100.0% | **2,571.0 ms** | PASS |
+| `golden_chanterelle.jpg` | Fungi | Golden Chanterelle (*Cantharellus cibarius*) | 0.730 | 100.0% | **2,579.2 ms** | PASS |
+| `tropical_foliage.jpg` | Out-of-Distribution | Bloodroot (*Tentative NN*, 0.549 < 0.60) | 0.549 | 21.4% | **2,575.6 ms** | PASS (Rejected) |
+| `blurry_woodland_shadow.jpg` | Ambiguous | Painted Turtle (*Ambiguous NN*, 0.676) | 0.676 | 29.4% | **2,557.2 ms** | PASS (Uncertain) |
+
+### Key Hardware Metrics:
+- **In-Distribution Top-1 Accuracy:** **100.0% (19 / 19)** on evaluated catalog specimens
+- **In-Distribution Top-3 Accuracy:** **100.0% (19 / 19)**
+- **Mean Warm Inference Latency (CPU):** **2,559.9 ms** (~2.56 seconds per image on 16 threads)
+- **Projected GPU Latency (CUDA fp16):** **~50 - 90 ms**
+- **Model Weight RAM Footprint:** **1,822.9 MB RAM**
+- **Peak Process Resident RAM:** **2,044.9 MB RAM** (standalone vision engine, no LLM)
+- **Cold-Start Deserialization:** **38.34 s**
+
+---
+
+## 5. System Architecture
 
 ```mermaid
 flowchart TD
-    A[Outdoor User / Device Camera] -->|Capture Nature Photo| B[React 19 + TypeScript Frontend]
-    B -->|Offline Client Validation < 15MB| C[FastAPI Local Server: 127.0.0.1:8000]
+    A[Outdoor Camera / Field Photo] -->|Capture In Situ| B[Touch Grass Field Mode Landing]
+    B -->|Offline Client Validation| C[FastAPI Local Server: WILDLENS_HOST:8000]
     C -->|Pillow 2-Pass Verification| D[BioClipService Singleton]
-    D -->|Preprocess 224x224 RGB via preprocess_val| E[imageomics/bioclip-2 ViT-L/14]
-    E -->|768-dim Normalized Image Embedding| F[Cosine Similarity & Softmax Logits]
-    F -->|Calibrate Confidence & Lookalikes| G[Structured IdentificationResponse]
-    G --> B
-    B -->|IndexedDB Local Storage| H[Private Field Journal]
-    B -->|Prompt Screen Break| I[Touch Grass: Real-World Observation]
+    D -->|Native preprocess_val Transform| E[imageomics/bioclip-2 ViT-L/14]
+    E -->|768-dim Normalized Image Embedding| F[Cosine Alignment with Taxa Embeddings]
+    F -->|Curated Traits & Fungi Guard| G[Structured IdentificationResponse]
+    G --> H[One-Glance Result View]
+    H -->|Tap Now Look Up| I[Sensory Screen Break: 60s Dimming to Near-Black]
+    I -->|Tap Anywhere or Timer End| B
 ```
 
 ---
 
-## 5. Measured Hardware Benchmarks
+## 6. Outdoor Mobile Hotspot / LAN Usage
 
-Measured on Intel Core i7-13700HX (16 Cores / 24 Threads, 16 GB DDR5 RAM, NVIDIA RTX 5060 Laptop GPU) on Windows 11 using `scripts/benchmark_hardware.py`:
+You can run the backend on a laptop in your backpack and use your smartphone's camera in the field without any internet connection:
 
-| Specimen Test Photo | Clade / Category | Identified Species | Cosine Sim | Confidence | Inference Latency | Verification |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `american_robin.jpg` | Aves | American Robin (*Turdus migratorius*) | 0.722 | 100.0% | **3,375.6 ms** | PASS |
-| `blue_jay.jpg` | Aves | Blue Jay (*Cyanocitta cristata*) | 0.726 | 100.0% | **3,343.6 ms** | PASS |
-| `white_oak_leaf.jpg` | Plantae | White Oak (*Quercus alba*) | 0.729 | 100.0% | **3,520.7 ms** | PASS |
-| `northern_red_oak_leaf.jpg` | Plantae (Lookalike) | Northern Red Oak (*Quercus rubra*) | 0.693 | 61.0% | **3,289.2 ms** | PASS |
-| `monarch_butterfly.jpg` | Insecta | Monarch Butterfly (*Danaus plexippus*) | 0.703 | 99.8% | **3,456.1 ms** | PASS |
-| `viceroy_butterfly.jpg` | Insecta (Lookalike) | Viceroy Butterfly (*Limenitis archippus*) | 0.732 | 100.0% | **3,322.7 ms** | PASS |
-| `golden_chanterelle.jpg` | Fungi | Golden Chanterelle (*Cantharellus cibarius*) | 0.730 | 100.0% | **3,452.1 ms** | PASS |
-| `tropical_foliage.jpg` | Out-of-Distribution | Bloodroot (*Tentative NN*, 0.549 < 0.60 threshold) | 0.549 | 21.4% | **3,388.5 ms** | PASS (Rejected) |
+1. Connect both laptop and phone to the same portable Wi-Fi hotspot (no cellular internet uplink required).
+2. Configure the backend host in `.env`:
+   ```bash
+   WILDLENS_HOST=0.0.0.0
+   PORT=8000
+   ```
+3. Start the backend:
+   ```bash
+   python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000
+   ```
+4. Start the frontend:
+   ```bash
+   cd frontend
+   npm run dev -- --host 0.0.0.0
+   ```
+5. On your phone's browser, open `http://<laptop-lan-ip>:3000`.
 
-- **In-Distribution Top-1 Accuracy:** **100.0% (19 / 19)**
-- **In-Distribution Top-3 Accuracy:** **100.0% (19 / 19)**
-- **Out-of-Distribution Rejection:** **100.0% (1 / 1)** (Tropical foliage flagged as `inconclusive` below 0.60 threshold)
-- **Model Warmup Latency:** ~37.8 s (cold deserialization of 1.7 GB safetensors + 768-dim taxonomy embeddings)
-- **Mean Inference Latency:** **3,371.1 ms** (CPU multi-threaded AVX2, 16 threads)
-- **Memory Footprint:** ~1,822.7 MB RAM (BioCLIP-2 weights) / 2,043.4 MB peak resident RAM
+> [!WARNING]
+> Setting `WILDLENS_HOST=0.0.0.0` binds the server to all network interfaces, making it accessible to any device on the local network. Only use this on trusted personal hotspots or private LANs, never on untrusted public Wi-Fi.
 
 ---
 
-## 6. Installation & Quickstart
+## 7. Field Test Log
 
-### Prerequisites
-- Python 3.12 (or 3.11)
-- Node.js 20+ & npm
+*Use this table to record actual outdoor observations during field outings:*
 
-### 1. Clone Repository & Setup Virtual Environment
+| Date | Location | Weather & Light | Observed Subject | Model Prediction | Confidence Band | Field Verification Notes |
+|---|---|---|---|---|---|---|
+| *YYYY-MM-DD* | *Hemlock Trail* | *Overcast, dappled light* | *Quercus alba* | *White Oak* | *Likely* | *Observed rounded lobes without bristle tips.* |
+| *YYYY-MM-DD* | *Meadow Border* | *Direct sunlight* | *Danaus plexippus* | *Monarch Butterfly* | *Likely* | *Confirmed lack of post-median hindwing line.* |
+| *YYYY-MM-DD* | *[Location]* | *[Conditions]* | *[Specimen]* | *[Prediction]* | *[Band]* | *[Physical field traits observed]* |
+| *YYYY-MM-DD* | *[Location]* | *[Conditions]* | *[Specimen]* | *[Prediction]* | *[Band]* | *[Physical field traits observed]* |
+
+---
+
+## 8. Quickstart & Installation
+
+### 1. Setup Python Virtual Environment
 ```bash
-git clone https://github.com/your-username/wildlens-ai.git
-cd wildlens-ai
-
-# Create virtual environment
 python -m venv .venv
 
-# Activate environment
 # On Windows:
 .\.venv\Scripts\Activate.ps1
-# On Linux / macOS:
+# On Linux/macOS:
 source .venv/bin/activate
 
-# Install backend dependencies
 pip install -r backend/requirements.txt
 ```
 
-### 2. Frontend Dependencies
+### 2. Install Frontend Dependencies
 ```bash
 cd frontend
 npm install
 cd ..
 ```
 
-### 3. Start Backend Server
+### 3. Start Backend & Frontend
 ```bash
-# Starts local FastAPI backend on 127.0.0.1:8000
+# Terminal 1: Backend
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --port 8000
-```
 
-### 4. Start Frontend
-```bash
+# Terminal 2: Frontend
 cd frontend
 npm run dev
 ```
-Open **`http://localhost:5173`** in your browser.
+Open **`http://localhost:3000`** in your browser.
 
 ---
 
-## 7. Automated Test Suite
+## 9. Verification & Test Suites
 
-### Running Backend & Real Model Tests
-```powershell
+### Run Backend Tests (45 Tests)
+```bash
 .\.venv\Scripts\python.exe -m pytest backend/tests -v
 ```
-**Results:** `41 passed in 24.19s` (covers API health, image validation, corrupt payload handling, real BioCLIP-2 inference, unit schemas, cache invalidation, and offline loopback acceptance).
+Verifies offline socket-level isolation, BioCLIP-2 candidate alignment, curated trait fallbacks, mandatory mushroom warning, and cache invalidation on model change.
 
-### Running Offline Acceptance Test
-```powershell
-python scripts/verify_offline.py
-```
-
-### Running Hardware Benchmark Profiler
-```powershell
-python scripts/benchmark_hardware.py
-```
-
-### Running Frontend Tests & Production Build
+### Run Frontend Tests (15 Tests)
 ```bash
 cd frontend
-npm test        # Runs Vitest unit & integration tests (15 passed)
-npm run build   # Production TypeScript typecheck & Vite bundle build
+npm test
+npm run build
 ```
+Validates single-model telemetry, camera stream handling, glove-friendly UI controls, and production build compilation.
 
----
-
-## 8. Offline Verification Protocol
-
-To verify 100% offline functionality independently:
-1. Ensure weights are cached in `models/bioclip_cache/` (occurs on first model run).
-2. Physically disconnect Wi-Fi / Ethernet on your computer.
-3. Start backend: `uvicorn app.main:app --app-dir backend --port 8000`.
-4. Open the web app on `http://localhost:5173`.
-5. Upload any nature photograph or click any of the **Instant Nature Test Samples**.
-6. The model will successfully classify the image in ~3.3s on CPU with zero network requests.
-7. Run `python scripts/verify_offline.py` for automated socket-level proof.
-8. See [docs/OFFLINE_VERIFICATION.md](docs/OFFLINE_VERIFICATION.md) for detailed telemetry logs.
-
----
-
-## 9. Known Limitations
-
-1. **Macro / Microscope Invertebrates:** Tiny arthropods (e.g. microscopic springtails or mites) photographed from extreme distances cannot be reliably identified down to species.
-2. **Juvenile & Dormant Flora:** Winter twigs without leaves or young saplings share visual overlap with lookalikes; always verify distinguishing features outdoors.
-3. **Mushroom Consumption Warning:** Never forage or consume wild mushrooms based on computer vision models. Fungi results are for educational interest only.
-
----
-
-## 10. Repository Structure
-
+### Run Hardware Benchmark
+```bash
+.\.venv\Scripts\python.exe scripts/benchmark_hardware.py
 ```
-wildlens-ai/
-├── backend/
-│   ├── app/
-│   │   ├── api/routes.py              # FastAPI endpoints (health, status, identify, missions, species)
-│   │   ├── core/
-│   │   │   ├── config.py              # Centralized environment configuration
-│   │   │   └── exceptions.py          # Domain exceptions & HTTP handlers
-│   │   ├── repositories/
-│   │   │   └── taxonomy_repository.py # Tree of Life taxonomy access layer
-│   │   ├── schemas/identification.py  # Pydantic v2 schemas & contract models
-│   │   ├── services/
-│   │   │   ├── bioclip_service.py     # OpenCLIP ViT-L/14 inference & uncertainty engine
-│   │   │   └── taxonomy_kb.py         # Curated biological taxonomy database & traits
-│   │   ├── utils/
-│   │   │   └── image_processing.py    # Pillow 2-pass validation & dimensions guard
-│   │   └── main.py                    # App entrypoint, lifespan, & CORS middleware
-│   ├── tests/
-│   │   ├── unit/                      # Fast sub-second unit tests
-│   │   │   ├── test_image_processing.py
-│   │   │   ├── test_schemas.py
-│   │   │   └── test_taxonomy_repository.py
-│   │   ├── integration/               # API endpoints & real model inference
-│   │   │   ├── test_api_endpoints.py
-│   │   │   ├── test_model_inference.py
-│   │   │   └── test_offline_acceptance.py
-│   │   └── conftest.py
-│   ├── sample_images/                 # Authentic nature test photographs
-│   ├── pyproject.toml                 # Ruff linting & Pytest configuration
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/                # Modular presentational components
-│   │   │   ├── layout/Navbar.tsx      # Navigation header & offline badge
-│   │   │   ├── identification/        # ImageUploader & IdentificationCard
-│   │   │   ├── journal/JournalList.tsx # Observation list & export
-│   │   │   ├── missions/MissionCard.tsx # Touch Grass mission cards
-│   │   │   └── system/SystemStatusModal.tsx # Real-time AI runtime telemetry
-│   │   ├── features/
-│   │   │   └── field-mode/            # Sunlight high-contrast outdoor explorer
-│   │   ├── hooks/                     # Custom React hooks (useJournal, useMissions, useSystemTelemetry)
-│   │   ├── services/                  # Typed API client & IndexedDB storage engine
-│   │   ├── pages/                     # Home, Identify, Missions, Journal, About
-│   │   ├── types/index.ts             # TypeScript domain types (zero 'any')
-│   │   ├── tests/                     # Vitest test suite (15 tests)
-│   │   ├── App.tsx                    # Clean declarative composition
-│   │   └── main.tsx
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── tsconfig.json
-├── docs/
-│   ├── architecture.md                # System design & component breakdown
-│   ├── model-evaluation.md            # Taxonomic coverage & uncertainty evaluation
-│   ├── testing.md                     # Testing guide & acceptance verification
-│   ├── HARDWARE_BENCHMARK.md          # Latency, memory, & warmup benchmarks
-│   ├── OFFLINE_VERIFICATION.md        # Socket interceptor protocol documentation
-│   └── PRIVACY_DATA_SAFETY.md         # Data safety & field ethics policy
-├── scripts/
-│   ├── verify_offline.py              # Standalone socket-level offline audit
-│   └── benchmark_hardware.py          # Automated latency & memory profiler
-├── .github/
-│   └── workflows/ci.yml               # GitHub Actions CI workflow
-├── models/
-│   └── README.md                      # Weight specs & caching instructions
-├── .env.example
-├── .gitignore
-├── LICENSE                            # MIT License
-├── CONTRIBUTING.md
-├── pytest.ini
-└── README.md
-```
+Executes real timing and memory profiling across 21 biodiversity test images.
 
 ---
 
-## 11. Challenge Highlights & Summary
+## 10. Known Limitations & Safety
 
-1. **Open AI at the core:** Real `imageomics/bioclip-2` open-weight model runs locally on consumer CPUs. No mock responses, no closed cloud APIs.
-2. **Outdoor impact:** Focuses on the real world through Field Mode, high-contrast sunlight design, Screen Break Reminders, and sensory Touch Grass Missions.
-3. **Open innovation:** 100% offline edge privacy, IndexedDB device storage, and full Tree of Life taxonomic transparency.
-
-*Happy exploring — now go outside and touch grass! 🌲*
+1. **Microscopic Traits**: BioCLIP-2 identifies organisms from field macro-photography. It cannot resolve microscopic fungal spores or cellular features.
+2. **Juveniles and Dormancy**: Winter twigs and early instar larvae may score lower similarity than mature specimens.
+3. **Mandatory Fungi Notice**: Never eat wild mushrooms or plants based on computer vision identification.

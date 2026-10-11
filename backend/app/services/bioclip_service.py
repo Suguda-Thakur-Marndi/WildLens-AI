@@ -22,7 +22,7 @@ from app.utils.image_processing import validate_and_decode_image
 logger = logging.getLogger("wildlens.bioclip")
 
 MUSHROOM_SAFETY_WARNING = (
-    "Mushroom Safety Warning: Never forage or consume wild mushrooms based on computer vision identification. "
+    "Mushroom Safety Warning: Never eat wild mushrooms based on this app or computer vision identification. "
     "Many edible mushrooms have deadly toxic lookalikes (e.g. Amanita phalloides). Always consult an expert mycologist."
 )
 

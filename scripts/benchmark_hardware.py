@@ -16,17 +16,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
 os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 import psutil
 import torch
 from app.services.bioclip_service import BioClipService
-from app.services.llm_service import LLMService
 
 
 def benchmark():
     print("=" * 95)
-    print("WildLens AI — Hardware Benchmarking & BioCLIP-2 Multi-Taxa Evaluation Suite")
+    print("WildLens AI — Hardware Benchmarking & BioCLIP-2 Standalone Vision Profiler")
     print("=" * 95)
 
     process = psutil.Process(os.getpid())
@@ -35,7 +33,8 @@ def benchmark():
     service = BioClipService.get_instance()
     device = service.device
     print(f"Platform: {sys.platform} | Python: {sys.version.split()[0]}")
-    print(f"Target Compute Device: {device.upper()}")
+    print(f"Vision Model: {service.model_id} (ViT-L/14, 768-dim embeddings, TreeOfLife-200M)")
+    print(f"Target Compute Device: {device.upper()} ({service.precision})")
     print(f"Initial Process Memory: {mem_before_mb:.1f} MB\n")
 
     # 1. Cold start measurement for BioCLIP-2
@@ -48,18 +47,6 @@ def benchmark():
 
     print(f"    BioCLIP-2 Cold Start Duration: {bioclip_cold_start_sec:.2f} s")
     print(f"    RAM delta for BioCLIP-2 weights: {bioclip_weight_ram_mb:.1f} MB\n")
-
-    # 2. Attempt loading Language Layer (Qwen3-8B) to measure dual-model memory footprint
-    print("--> 2. Initializing Language Layer (Qwen3-8B) for dual-model memory profiling...")
-    llm_service = LLMService.get_instance()
-    t_llm_0 = time.time()
-    llm_loaded = llm_service.load_model(force_reload=True)
-    llm_cold_start_sec = time.time() - t_llm_0
-    mem_after_both_mb = process.memory_info().rss / (1024 * 1024)
-    total_dual_model_ram_mb = mem_after_both_mb - mem_before_mb
-
-    print(f"    Language Layer Status: '{llm_service.status}' ({llm_cold_start_sec:.2f} s)")
-    print(f"    Peak Process Memory with both layers initialized: {mem_after_both_mb:.1f} MB (Delta: {total_dual_model_ram_mb:.1f} MB)\n")
 
     # 3. Sample inference measurements across 20+ authentic photos
     sample_dir = PROJECT_ROOT / "backend" / "sample_images"

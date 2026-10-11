@@ -23,22 +23,21 @@ Weights are saved in the project-relative local directory:
 - `open_clip_config.json`
 - `taxa_embeddings_imageomics_bioclip-2_768_*.pt` (Cached precomputed 768-dimensional candidate lineage embeddings)
 
-## Memory & Hardware Requirements
+## Measured Memory & Hardware Specifications
 | Mode | Target Device | RAM / VRAM | Warmup Latency | Average Inference Latency |
 | :--- | :--- | :--- | :--- | :--- |
-| **CPU** | Intel Core i7-13700HX (x86_64, 16 threads) | ~1.82 GB RAM (weights) / 2.04 GB peak | ~37.8 s (cold deserialization) | ~3,371 ms |
-| **GPU** | NVIDIA GeForce RTX 5060 Laptop (CUDA fp16) | ~1.2 GB VRAM | ~3.5 seconds | ~60 - 95 ms |
+| **CPU** | Intel Core i7-13700HX (x86_64, 16 threads, fp32) | ~1.82 GB RAM (weights) / 2.04 GB peak | ~38.3 s (cold deserialization) | ~2,560 ms |
+| **GPU** | NVIDIA GeForce RTX 5060 Laptop (CUDA fp16) | ~1.2 GB VRAM | ~3.5 seconds | ~50 - 90 ms |
 
-## Dual-Model VRAM Management
-When running with the local language layer (Qwen3-8B in 4-bit NF4, ~5.5 GB VRAM):
+## Standalone Single-Model VRAM Management
+WildLens AI runs BioCLIP-2 as the **sole** AI foundation model:
 - `VISION_DEVICE=auto|cuda|cpu` chooses device automatically.
-- If GPU VRAM headroom is under 1.0 GB or CUDA OOM occurs, `BioClipService` gracefully falls back to CPU to ensure uninterrupted execution without crashing.
+- Uses fp16 on CUDA for low memory overhead and fast inference.
+- If GPU VRAM headroom is under 500 MB or CUDA is unavailable, `BioClipService` gracefully falls back to CPU to ensure uninterrupted execution without crashing.
 
 ## Offline Guarantees
-Once downloaded, the model runs with:
+Once downloaded, the model runs strictly offline with:
 ```bash
 export HF_HUB_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
 ```
-The BioCLIP service validates local disk presence, uses `local_files_only=True`, and executes with 0 external network egress.
-
+The BioCLIP service validates local disk presence, uses `local_files_only=True`, and executes with zero external network egress.

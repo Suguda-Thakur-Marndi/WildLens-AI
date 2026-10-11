@@ -18,7 +18,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
 # Block network calls at process level
 os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 _real_create_connection = socket.create_connection
 
