@@ -8,9 +8,10 @@ Verifies:
 
 import hashlib
 from pathlib import Path
+
 import torch
-import pytest
-from app.services.bioclip_service import BioClipService, MUSHROOM_SAFETY_WARNING
+
+from app.services.bioclip_service import BioClipService
 from app.services.taxonomy_kb import get_curated_traits
 
 SAMPLE_DIR = Path(__file__).resolve().parent.parent.parent / "sample_images"

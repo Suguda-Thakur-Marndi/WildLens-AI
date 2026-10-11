@@ -17,10 +17,10 @@ Verifies the 12 core requirements from the BioCLIP prediction audit:
 
 import io
 from pathlib import Path
-import pytest
+
 import numpy as np
-from PIL import Image
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.main import app
 from app.services.bioclip_service import BioClipService
@@ -358,6 +358,7 @@ def test_harebell_vs_bluebell_small_margin_not_confident():
     is narrow (top1 - top2 < 0.25 or top1 < 0.60), the system does NOT return 'confident'.
     """
     import torch
+
     from app.services.bioclip_service import BioClipService
     service = BioClipService.get_instance()
     service.load_model()

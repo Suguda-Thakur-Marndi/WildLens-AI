@@ -8,7 +8,7 @@ when VISION_MODEL_ID changes.
 import os
 import socket
 from pathlib import Path
-import pytest
+
 import torch
 
 # 1. Force offline mode in Hugging Face Hub
@@ -28,9 +28,10 @@ def guarded_create_connection(address, *args, **kwargs):
 
 socket.create_connection = guarded_create_connection
 
+from fastapi.testclient import TestClient  # noqa: E402
+
 from app.main import app  # noqa: E402
 from app.services.bioclip_service import BioClipService  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
 
 client = TestClient(app)
 SAMPLE_DIR = Path(__file__).resolve().parent.parent.parent / "sample_images"
