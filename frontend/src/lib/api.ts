@@ -45,7 +45,11 @@ export function isLocalhostAddress(hostname: string): boolean {
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '0.0.0.0' ||
-    hostname === '::1'
+    hostname === '::1' ||
+    hostname.endsWith('.local') ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)
   );
 }
 
@@ -150,8 +154,16 @@ export function getApiBaseUrl(): string {
     return process.env.BACKEND_URL.trim().replace(/\/+$/, '');
   }
 
-  // 4. Browser environment check for local development fallback
+  // 4. Browser environment check for local development and LAN fallback
   if (isBrowserLocal) {
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hostname &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      return `http://${window.location.hostname}:8000`;
+    }
     return 'http://127.0.0.1:8000';
   }
 
